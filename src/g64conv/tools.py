@@ -39,3 +39,43 @@ def ffprobe_json(path: str, *entries: str, count_frames: bool = False) -> dict:
 def ffmpeg_version() -> str:
     p = run([require("ffmpeg"), "-version"])
     return p.stdout.splitlines()[0] if p.stdout else "unknown"
+
+
+def run_ffmpeg_progress(cmd: list[str], duration_s: float | None, on_progress=None) -> subprocess.CompletedProcess:
+    """Run an ffmpeg command, reporting completion fraction through ``on_progress``.
+
+    ``cmd`` is a full ffmpeg command line whose LAST element is the output;
+    ``-progress pipe:1 -nostats`` is inserted before it so ffmpeg streams
+    ``out_time_us=`` lines on stdout while errors still go to stderr. The
+    fraction is ``out_time / duration_s`` (clamped); without a duration the
+    callback receives -1 (unknown)."""
+    if on_progress is None:
+        return run(cmd)
+    full = cmd[:-1] + ["-progress", "pipe:1", "-nostats", cmd[-1]]
+    proc = subprocess.Popen(full, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    assert proc.stdout is not None
+    for line in proc.stdout:
+        line = line.strip()
+        if line.startswith("out_time_us=") or line.startswith("out_time_ms="):
+            try:
+                us = int(line.split("=", 1)[1])
+            except ValueError:
+                continue
+            # ffmpeg labels both fields in microseconds (out_time_ms is a historical misnomer)
+            if duration_s and duration_s > 0:
+                on_progress(max(0.0, min(1.0, us / 1_000_000 / duration_s)))
+            else:
+                on_progress(-1.0)
+        elif line == "progress=end":
+            on_progress(1.0)
+    err = proc.stderr.read() if proc.stderr else ""
+    rc = proc.wait()
+    return subprocess.CompletedProcess(full, rc, stdout="", stderr=err)
+
+
+def media_duration(path: str) -> float | None:
+    try:
+        j = ffprobe_json(path, "format=duration")
+        return float(j.get("format", {}).get("duration", 0)) or None
+    except (RuntimeError, ValueError, TypeError):
+        return None

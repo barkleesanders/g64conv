@@ -4,14 +4,15 @@ from __future__ import annotations
 
 import os
 
-from .tools import require, run
+from .tools import media_duration, require, run_ffmpeg_progress
 
 FORMATS = ("mp4", "mkv", "mov", "webm", "gif", "frames", "hls")
 
 
 def transcode(mp4_path: str, fmt: str, out_dir: str | None = None, *, fps: float | None = None,
-              scale_width: int | None = None) -> str:
-    """Return the path (file or directory) of the produced output."""
+              scale_width: int | None = None, progress=None) -> str:
+    """Return the path (file or directory) of the produced output.
+    ``progress(fraction)`` is called while ffmpeg runs when given."""
     if fmt not in FORMATS:
         raise ValueError(f"unknown format {fmt!r}; choose from {', '.join(FORMATS)}")
     if fmt == "mp4":
@@ -47,7 +48,7 @@ def transcode(mp4_path: str, fmt: str, out_dir: str | None = None, *, fps: float
         cmd = base + ["-c", "copy", "-f", "hls", "-hls_time", "6", "-hls_list_size", "0",
                       "-hls_segment_filename", os.path.join(out, "seg_%05d.ts"),
                       os.path.join(out, "index.m3u8")]
-    p = run(cmd)
+    p = run_ffmpeg_progress(cmd, media_duration(mp4_path) if progress else None, progress)
     if p.returncode != 0:
         raise RuntimeError(f"ffmpeg {fmt} failed: {p.stderr.strip()}")
     return out

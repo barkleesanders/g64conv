@@ -13,13 +13,23 @@ Anyone who receives one of these exports (records requests, court discovery,
 a security office, a journalist, a defendant) has so far needed the vendor's
 Windows-only player to even look at it. This tool removes that limit.
 
+## Install
+
+One line, from GitHub (there is no PyPI release yet):
+
 ```
-pip install g64conv            # or: pipx install g64conv
-g64conv convert export.g64x    # one MP4 per camera, verified frame-for-frame
+pipx install "git+https://github.com/barkleesanders/g64conv"
 ```
 
-Requires Python 3.10+ and `ffmpeg`/`ffprobe` on the PATH (Homebrew, apt,
-winget, or a static build from ffmpeg.org). PyAV is installed automatically.
+`pip install "git+https://github.com/barkleesanders/g64conv"` works the same
+way inside any Python 3.10+ environment. PyAV comes with it; `ffmpeg` and
+`ffprobe` must be on the PATH (`brew install ffmpeg`, `apt install ffmpeg`,
+`winget install ffmpeg`, or a static build from ffmpeg.org).
+
+```
+g64conv convert export.g64x    # one MP4 per camera, verified frame-for-frame
+g64conv gui                    # or: drop the archives on a page in your browser
+```
 
 ## What you get
 
@@ -48,6 +58,30 @@ OK          out/Lobby_2026-08-04T140056Z.mp4  [720x720 h264, 25938 video frames 
   codes: `0` verified, `2` usage/missing input, `3` failed, `4` partial (source
   damage), `5` missing ffmpeg/PyAV.
 
+## The local web GUI
+
+```
+g64conv gui -o ~/Converted        # opens http://127.0.0.1:8765/ in your browser
+```
+
+![g64conv gui: drop zone, job log, outputs with a playing video](docs/gui.png)
+
+Drop `.g64` / `.g64x` files on the page (or name a path already on the
+computer, so a 30 GB USB export is not copied), tick any extra formats and the
+fisheye option, and watch the job: a progress bar per job and a lab-notebook
+log with every segment, frame count and verification result. Each output is
+listed with its dimensions, frame count, duration, rotation and the
+verification line (frames written vs decoded, damaged source frames, decode
+errors), a Play button that plays it right there, a Download link, and menus to
+produce another format or a dewarped view from it.
+
+Everything stays on your machine: the server listens on 127.0.0.1 only, the
+page loads no fonts, scripts or CDN, and it works offline. It also refuses
+requests whose `Host` is not loopback (DNS rebinding) and any state change that
+does not carry the `X-G64conv` header, which a page from another origin cannot
+add without a CORS preflight this server never grants. Nothing is ever deleted
+by the GUI. `--port 0` picks a free port; `--no-browser` just prints the URL.
+
 ## Commands
 
 | Command | Purpose |
@@ -55,6 +89,7 @@ OK          out/Lobby_2026-08-04T140056Z.mp4  [720x720 h264, 25938 video frames 
 | `g64conv convert <archive...> [-o DIR] [--format F]... [--dewarp double\|panorama] [--mount auto\|ceiling\|wall] [--keep-h264]` | archives to MP4 (+ other formats, + dewarped views) |
 | `g64conv transcode <video.mp4> --format mkv\|mov\|webm\|gif\|frames\|hls [--fps N] [--width W]` | any MP4 into other formats |
 | `g64conv dewarp <fisheye.mp4> [--mode double\|panorama] [--mount auto\|ceiling\|wall] [--fov 180] [--width W]` | turn a fisheye circle into normal views |
+| `g64conv gui [-o DIR] [--port 8765] [--no-browser]` (alias `web`) | local web page: drop archives, convert, play the results |
 | `g64conv probe <archive> [--json]` | header, frame count, RTP/NAL histogram, frame intervals, rotation |
 | `g64conv synth <any-video> out.g64x [--segment-seconds N]` | write a synthetic archive (test fixtures, bug reports) |
 
@@ -135,8 +170,9 @@ header round trip, three-segment join, frame-for-frame `framemd5` equality
 between the archive's H.264 and the produced MP4, a deliberately damaged
 keyframe being reported (not hidden), the CLI's exit codes and JSON report,
 every output format, the dewarp geometry on synthetic ceiling- and
-wall-mounted fisheyes, and the mount detection on both. Run `pytest` (needs
-ffmpeg).
+wall-mounted fisheyes, the mount detection on both, and the web GUI (upload,
+convert, Range playback, transcode, the request guards, a failing input). Run
+`pytest` (needs ffmpeg).
 
 ## Limits
 

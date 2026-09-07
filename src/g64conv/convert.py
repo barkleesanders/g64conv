@@ -75,7 +75,9 @@ def open_output(out_path: str, sps: bytes, pps_list: list[bytes], first_nals: li
 
 
 def convert_source(source: Source, out_dir: str, *, keep_h264: bool = False,
-                   log: Callable[[str], None] = lambda s: None) -> ConvertResult:
+                   log: Callable[[str], None] = lambda s: None,
+                   progress: Callable[[int, int], None] = lambda done, total: None) -> ConvertResult:
+    """``progress(done_segments, total_segments)`` is called as each segment is finished."""
     import av
 
     frames_total = frames_written = damaged = non_video = keyframes = 0
@@ -85,7 +87,8 @@ def convert_source(source: Source, out_dir: str, *, keep_h264: bool = False,
     rotations: dict[int, int] = {}; damaged_times: list[str] = []; segs_info: list[dict] = []
     os.makedirs(out_dir, exist_ok=True)
     try:
-        for seg_name, load in source.segments:
+        n_segs = len(source.segments)
+        for seg_i, (seg_name, load) in enumerate(source.segments):
             seg = g64.Segment.parse(seg_name, load())
             h = seg.header
             if h.frames_encrypted:
@@ -157,6 +160,7 @@ def convert_source(source: Source, out_dir: str, *, keep_h264: bool = False,
                 "end_utc": g64.filetime_to_datetime(seg_last).isoformat() if seg_last else None,
             })
             log(f"   {seg_name}: {len(seg.frames)} frames")
+            progress(seg_i + 1, n_segs)
     finally:
         if out_container is not None:
             out_container.close()

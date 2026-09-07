@@ -75,6 +75,12 @@ def build_parser() -> argparse.ArgumentParser:
     d.add_argument("--crf", type=int, default=18)
     _common(d)
 
+    g = sub.add_parser("gui", aliases=["web"], help="local web GUI: drop archives, convert, play the results")
+    g.add_argument("-o", "--out-dir", default=".", help="where converted files go (default: current directory)")
+    g.add_argument("--port", type=int, default=8765, help="listen on 127.0.0.1:PORT (default 8765; 0 = any free port)")
+    g.add_argument("--no-browser", action="store_true", help="do not open the page in a browser")
+    _common(g)
+
     t = sub.add_parser("transcode", help="MP4 -> mkv/mov/webm/gif/frames/hls with ffmpeg")
     t.add_argument("inputs", nargs="+")
     t.add_argument("-o", "--out-dir", default=None)
@@ -105,7 +111,7 @@ def main(argv: list[str] | None = None) -> int:
         out_stream = sys.stderr
         out.say = lambda s: (None if out.quiet else print(s, file=out_stream, flush=True))  # type: ignore[method-assign]
     try:
-        return {"convert": cmd_convert, "dewarp": cmd_dewarp, "transcode": cmd_transcode,
+        return {"convert": cmd_convert, "dewarp": cmd_dewarp, "transcode": cmd_transcode, "gui": cmd_gui, "web": cmd_gui,
                 "probe": cmd_probe, "synth": cmd_synth}[a.cmd](a, out)
     except MissingDependency as e:
         print(f"missing dependency: {e}", file=sys.stderr)
@@ -198,6 +204,13 @@ def cmd_dewarp(a, out: Out) -> int:
             out.status("OK", o)
     _emit(a, report)
     return worst
+
+
+def cmd_gui(a, out: Out) -> int:
+    from .gui import serve
+
+    os.makedirs(a.out_dir, exist_ok=True)
+    return serve(a.out_dir, port=a.port, open_browser=not a.no_browser, log=out.say)
 
 
 def cmd_transcode(a, out: Out) -> int:

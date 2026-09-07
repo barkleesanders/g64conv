@@ -33,7 +33,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
-from .tools import ffprobe_json, require, run
+from .tools import ffprobe_json, media_duration, require, run, run_ffmpeg_progress
 
 MODES = ("double", "panorama")
 MOUNTS = ("auto", "ceiling", "wall")
@@ -92,8 +92,9 @@ def _vf(spec: DewarpSpec, yaw: int, w: int, h_fov: float, pitch: int = 90) -> st
 
 
 def dewarp(input_path: str, out_dir: str, spec: DewarpSpec | None = None,
-           stem: str | None = None) -> list[str]:
-    """Write dewarped view(s) of a fisheye video. Returns output paths."""
+           stem: str | None = None, progress=None) -> list[str]:
+    """Write dewarped view(s) of a fisheye video. Returns output paths.
+    ``progress(fraction)`` (0..1 across all views) is called while ffmpeg runs."""
     spec = spec or DewarpSpec()
     if spec.mode not in MODES:
         raise ValueError(f"unknown dewarp mode {spec.mode!r}")
@@ -116,13 +117,15 @@ def dewarp(input_path: str, out_dir: str, spec: DewarpSpec | None = None,
     else:
         w = spec.width or (in_w * 4 - (in_w * 4) % 2)
         jobs = [("pano", 0, 360.0, 90)]
-    for tag, yaw, h_fov, pitch in jobs:
+    dur = media_duration(input_path) if progress else None
+    for ji, (tag, yaw, h_fov, pitch) in enumerate(jobs):
         out = os.path.join(out_dir, f"{stem}_{tag}.mp4")
+        cb = (lambda f, ji=ji: progress((ji + max(f, 0.0)) / len(jobs))) if progress else None
         # -noautorotate: the source's display-rotation tag describes the fisheye as mounted,
         # which is irrelevant to the projection; the circle is dewarped as recorded.
-        p = run([ffmpeg, "-v", "error", "-y", "-noautorotate", "-i", input_path,
+        p = run_ffmpeg_progress([ffmpeg, "-v", "error", "-y", "-noautorotate", "-i", input_path,
                  "-vf", _vf(spec, yaw, w, h_fov, pitch), "-c:v", "libx264", "-preset", spec.preset,
-                 "-crf", str(spec.crf), "-pix_fmt", "yuv420p", "-movflags", "+faststart", out])
+                 "-crf", str(spec.crf), "-pix_fmt", "yuv420p", "-movflags", "+faststart", out], dur, cb)
         if p.returncode != 0:
             raise RuntimeError(f"ffmpeg dewarp failed for {tag}: {p.stderr.strip()}")
         outs.append(out)
