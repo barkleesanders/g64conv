@@ -116,6 +116,23 @@ def test_upload_convert_play(server, sample_video, ffmpeg, tmp_path):
     assert st["jobs"][0]["status"] == "ok" and any(n.endswith(".gif") for n in [o["name"] for o in st["outputs"]])
 
 
+def test_subfolder_outputs_are_listed(server, sample_video):
+    base, out = server
+    import shutil
+    sub = os.path.join(out, "dewarped")
+    os.makedirs(sub, exist_ok=True)
+    shutil.copy(sample_video, os.path.join(sub, "cam_A.mp4"))
+    os.makedirs(os.path.join(out, "uploads", "nested"), exist_ok=True)
+    shutil.copy(sample_video, os.path.join(out, "uploads", "nested", "ignored.mp4"))
+    st = json.loads(_req(base + "/api/state")[2])
+    names = [o["name"] for o in st["outputs"]]
+    assert "dewarped/cam_A.mp4" in names and not any("ignored" in n for n in names)
+    item = [o for o in st["outputs"] if o["name"] == "dewarped/cam_A.mp4"][0]
+    assert item["url"] == "/files/dewarped/cam_A.mp4" and item["width"] == 320
+    code, hdr, body = _req(base + item["url"], headers={"Range": "bytes=0-9"})
+    assert code == 206 and len(body) == 10
+
+
 def test_convert_failure_is_reported(server, tmp_path):
     base, out = server
     bad = tmp_path / "bad.g64"

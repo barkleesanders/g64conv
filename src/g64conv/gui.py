@@ -213,32 +213,62 @@ class Outputs:
         self.out_dir = out_dir
         self.cache: dict[tuple, dict] = {}
 
+    SKIP_DIRS = ("uploads",)
+    MAX_DEPTH = 3
+
     def list(self) -> list[dict]:
+        """Videos in the output directory and its subfolders (e.g. a dewarped/ folder
+        made by an earlier run), named by their path relative to the output directory."""
         items = []
-        try:
-            names = sorted(os.listdir(self.out_dir))
-        except OSError:
-            return items
-        for name in names:
-            p = os.path.join(self.out_dir, name)
-            low = name.lower()
-            if os.path.isfile(p) and low.endswith(OUTPUT_FILE_EXTS):
-                st = os.stat(p)
-                key = (p, st.st_size, int(st.st_mtime))
-                if key not in self.cache:
-                    self.cache[key] = self._probe(p)
-                items.append({"name": name, "kind": "file", "size": st.st_size, "mtime": st.st_mtime,
-                              "url": "/files/" + name, "playable": low.endswith((".mp4", ".webm", ".mov")),
-                              **self.cache[key]})
-            elif os.path.isdir(p) and low.endswith(OUTPUT_DIR_SUFFIXES):
-                try:
-                    count = len(os.listdir(p))
-                except OSError:
-                    count = 0
-                items.append({"name": name, "kind": "dir", "entries": count, "mtime": os.stat(p).st_mtime,
-                              "url": "/files/" + name + "/"})
+        for rel_dir, depth in self._walk():
+            full_dir = os.path.join(self.out_dir, rel_dir) if rel_dir else self.out_dir
+            try:
+                names = sorted(os.listdir(full_dir))
+            except OSError:
+                continue
+            for name in names:
+                p = os.path.join(full_dir, name)
+                rel = os.path.join(rel_dir, name) if rel_dir else name
+                url = "/files/" + "/".join(rel.split(os.sep))
+                low = name.lower()
+                if os.path.isfile(p) and low.endswith(OUTPUT_FILE_EXTS):
+                    st = os.stat(p)
+                    key = (p, st.st_size, int(st.st_mtime))
+                    if key not in self.cache:
+                        self.cache[key] = self._probe(p)
+                    items.append({"name": rel, "kind": "file", "size": st.st_size, "mtime": st.st_mtime,
+                                  "url": url, "playable": low.endswith((".mp4", ".webm", ".mov")),
+                                  **self.cache[key]})
+                elif os.path.isdir(p) and low.endswith(OUTPUT_DIR_SUFFIXES):
+                    try:
+                        count = len(os.listdir(p))
+                    except OSError:
+                        count = 0
+                    items.append({"name": rel, "kind": "dir", "entries": count, "mtime": os.stat(p).st_mtime,
+                                  "url": url + "/"})
         items.sort(key=lambda d: d["mtime"], reverse=True)
         return items
+
+    def _walk(self):
+        """(relative_dir, depth) pairs, breadth-first, skipping uploads/, hidden dirs,
+        frames/hls output dirs, and symlinks; bounded so a huge tree cannot stall the page."""
+        pending = [("", 0)]
+        while pending:
+            rel, depth = pending.pop(0)
+            yield rel, depth
+            if depth >= self.MAX_DEPTH:
+                continue
+            full = os.path.join(self.out_dir, rel) if rel else self.out_dir
+            try:
+                for name in sorted(os.listdir(full)):
+                    p = os.path.join(full, name)
+                    low = name.lower()
+                    if (name.startswith(".") or name in self.SKIP_DIRS or low.endswith(OUTPUT_DIR_SUFFIXES)
+                            or os.path.islink(p) or not os.path.isdir(p)):
+                        continue
+                    pending.append((os.path.join(rel, name) if rel else name, depth + 1))
+            except OSError:
+                continue
 
     @staticmethod
     def _probe(p: str) -> dict:
