@@ -12,6 +12,10 @@ normal-looking views.
 Anyone who receives one of these exports (records requests, court discovery,
 a security office, a journalist, a defendant) has so far needed the vendor's
 Windows-only player to even look at it. This tool removes that limit.
+[docs/why.md](docs/why.md) compares every free and paid alternative that
+could be found, with sources: g64conv is the only free converter that runs on
+macOS and Linux, needs no vendor software, and does not depend on how the
+export was made.
 
 ## Install
 
