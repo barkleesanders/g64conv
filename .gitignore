@@ -1,0 +1,19 @@
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.venv/
+# never commit archives or footage
+*.g64
+*.g64x
+*.g64m
+*.mp4
+*.mkv
+*.mov
+*.webm
+*.gif
+*.h264
+*.ts
+*.m3u8
