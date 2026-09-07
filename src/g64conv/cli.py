@@ -56,6 +56,8 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--dewarp", choices=["none", "double", "panorama"], default="none",
                    help="for circular fisheye cameras: split into two normal views (double) or one 360 strip")
     c.add_argument("--fisheye-fov", type=float, default=180.0, help="lens field of view of the fisheye circle")
+    c.add_argument("--mount", choices=["auto", "ceiling", "wall"], default="auto",
+                   help="how the fisheye is mounted; auto measures a frame (a black upper half = wall)")
     c.add_argument("--keep-h264", action="store_true", help="also write the raw Annex-B elementary stream")
     c.add_argument("--no-verify", action="store_true")
     c.add_argument("--report", help="write the JSON report to this file as well")
@@ -65,6 +67,8 @@ def build_parser() -> argparse.ArgumentParser:
     d.add_argument("inputs", nargs="+")
     d.add_argument("-o", "--out-dir", default=".")
     d.add_argument("--mode", choices=["double", "panorama"], default="double")
+    d.add_argument("--mount", choices=["auto", "ceiling", "wall"], default="auto",
+                   help="how the fisheye is mounted; auto measures a frame (a black upper half = wall)")
     d.add_argument("--fov", type=float, default=180.0)
     d.add_argument("--width", type=int, default=0, help="output width per view (default: 2x input for double, 4x for panorama)")
     d.add_argument("--above-horizon", type=float, default=15.0, help="degrees kept above the rim/horizon")
@@ -162,7 +166,7 @@ def cmd_convert(a, out: Out) -> int:
                         out.status("FAILED", f"{fmt}: {e}"); worst = max(worst, EXIT_FAIL)
                 if a.dewarp != "none":
                     try:
-                        d["extra_outputs"]["dewarp"] = dewarp(r.output, a.out_dir, DewarpSpec(mode=a.dewarp, fov=a.fisheye_fov))
+                        d["extra_outputs"]["dewarp"] = dewarp(r.output, a.out_dir, DewarpSpec(mode=a.dewarp, mount=a.mount, fov=a.fisheye_fov))
                     except RuntimeError as e:
                         out.status("FAILED", f"dewarp: {e}"); worst = max(worst, EXIT_FAIL)
             report.append(d)
@@ -179,17 +183,17 @@ def cmd_dewarp(a, out: Out) -> int:
     from .dewarp import DewarpSpec, dewarp
 
     worst = EXIT_OK; report = []
-    spec = DewarpSpec(mode=a.mode, fov=a.fov, width=a.width, above_horizon_deg=a.above_horizon, crf=a.crf)
+    spec = DewarpSpec(mode=a.mode, mount=a.mount, fov=a.fov, width=a.width, above_horizon_deg=a.above_horizon, crf=a.crf)
     for inp in a.inputs:
         if not os.path.isfile(inp):
             out.status("MISSING", inp); worst = max(worst, EXIT_USAGE); continue
         if a.dry_run:
-            out.status("DRY-RUN", f"would dewarp {inp} mode={a.mode} fov={a.fov:g} -> {a.out_dir}"); continue
+            out.status("DRY-RUN", f"would dewarp {inp} mode={a.mode} mount={a.mount} fov={a.fov:g} -> {a.out_dir}"); continue
         try:
             outs = dewarp(inp, a.out_dir, spec)
         except RuntimeError as e:
             out.status("FAILED", f"{inp}: {e}"); worst = max(worst, EXIT_FAIL); continue
-        report.append({"input": inp, "outputs": outs, "mode": a.mode, "fov": a.fov})
+        report.append({"input": inp, "outputs": outs, "mode": a.mode, "mount": a.mount, "fov": a.fov})
         for o in outs:
             out.status("OK", o)
     _emit(a, report)

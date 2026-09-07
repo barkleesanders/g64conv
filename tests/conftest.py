@@ -24,14 +24,7 @@ def sample_video(tmp_path_factory, ffmpeg):
     return str(p)
 
 
-@pytest.fixture(scope="session")
-def fisheye_video(tmp_path_factory, ffmpeg):
-    """A synthetic ceiling-camera fisheye: a room whose four walls are distinct
-    colours (left blue, front red, right green, back yellow) with a white marker
-    in the top-left corner of the front wall, projected to a 360x360 fisheye by
-    a camera looking straight down. Returns (video_path, wall_colours)."""
-    d = tmp_path_factory.mktemp("fish")
-    pano = d / "pano.png"
+def _room_pano(ffmpeg, path):
     vf = (
         "drawbox=x=0:y=0:w=2048:h=512:c=0x101010:t=fill,"
         "drawbox=x=768:y=512:w=512:h=248:c=0xc04040:t=fill,"     # front (red), yaw 0
@@ -42,7 +35,33 @@ def fisheye_video(tmp_path_factory, ffmpeg):
         "drawbox=x=780:y=520:w=80:h=80:c=white:t=fill"           # marker: top-left of the front wall
     )
     subprocess.run([ffmpeg, "-v", "error", "-y", "-f", "lavfi", "-i", "color=c=0x303030:s=2048x1024:d=1",
-                    "-frames:v", "1", "-vf", vf, str(pano)], check=True)
+                    "-frames:v", "1", "-vf", vf, str(path)], check=True)
+
+
+@pytest.fixture(scope="session")
+def wall_fisheye_video(tmp_path_factory, ffmpeg):
+    """The same room seen by a WALL-mounted fisheye looking horizontally at the
+    front (red) wall; the upper hemisphere is masked black as such cameras do."""
+    d = tmp_path_factory.mktemp("wallfish")
+    pano = d / "pano.png"
+    _room_pano(ffmpeg, pano)
+    video = d / "wallfisheye.mp4"
+    subprocess.run([ffmpeg, "-v", "error", "-y", "-loop", "1", "-i", str(pano), "-t", "1", "-r", "5",
+                    "-vf", "v360=equirect:fisheye:ih_fov=360:iv_fov=180:h_fov=180:v_fov=180:pitch=0:w=360:h=360,"
+                           "drawbox=x=0:y=0:w=360:h=180:c=black:t=fill",
+                    "-c:v", "libx264", "-pix_fmt", "yuv420p", str(video)], check=True)
+    return str(video)
+
+
+@pytest.fixture(scope="session")
+def fisheye_video(tmp_path_factory, ffmpeg):
+    """A synthetic ceiling-camera fisheye: a room whose four walls are distinct
+    colours (left blue, front red, right green, back yellow) with a white marker
+    in the top-left corner of the front wall, projected to a 360x360 fisheye by
+    a camera looking straight down. Returns (video_path, wall_colours)."""
+    d = tmp_path_factory.mktemp("fish")
+    pano = d / "pano.png"
+    _room_pano(ffmpeg, pano)
     video = d / "fisheye.mp4"
     subprocess.run([ffmpeg, "-v", "error", "-y", "-loop", "1", "-i", str(pano), "-t", "1", "-r", "5",
                     "-vf", "v360=equirect:fisheye:ih_fov=360:iv_fov=180:h_fov=180:v_fov=180:pitch=-90:w=360:h=360",

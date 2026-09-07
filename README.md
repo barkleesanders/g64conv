@@ -52,9 +52,9 @@ OK          out/Lobby_2026-08-04T140056Z.mp4  [720x720 h264, 25938 video frames 
 
 | Command | Purpose |
 |---|---|
-| `g64conv convert <archive...> [-o DIR] [--format F]... [--dewarp double\|panorama] [--keep-h264]` | archives to MP4 (+ other formats, + dewarped views) |
+| `g64conv convert <archive...> [-o DIR] [--format F]... [--dewarp double\|panorama] [--mount auto\|ceiling\|wall] [--keep-h264]` | archives to MP4 (+ other formats, + dewarped views) |
 | `g64conv transcode <video.mp4> --format mkv\|mov\|webm\|gif\|frames\|hls [--fps N] [--width W]` | any MP4 into other formats |
-| `g64conv dewarp <fisheye.mp4> [--mode double\|panorama] [--fov 180] [--width W]` | split a circular fisheye into normal views |
+| `g64conv dewarp <fisheye.mp4> [--mode double\|panorama] [--mount auto\|ceiling\|wall] [--fov 180] [--width W]` | turn a fisheye circle into normal views |
 | `g64conv probe <archive> [--json]` | header, frame count, RTP/NAL histogram, frame intervals, rotation |
 | `g64conv synth <any-video> out.g64x [--segment-seconds N]` | write a synthetic archive (test fixtures, bug reports) |
 
@@ -64,17 +64,30 @@ evidence; keep the MP4.
 
 ### Fisheye "360" cameras
 
-A ceiling-mounted 360 camera stores a circular image: the floor fills the
-middle, the walls form a ring near the rim. `--dewarp double` produces two
-normal 180-degree views (`_A.mp4`, `_B.mp4`), the same "double panorama" idea
-the vendor client offers; `--dewarp panorama` produces one 360-degree strip.
-It is ffmpeg's `v360` filter (`fisheye` in, `hequirect` out, `pitch=90`,
-`rorder=pyr`, `yaw=0|180`), cropped to the band from 15 degrees above the
-horizon down to the nadir. The projection is verified in the test-suite on a
-synthetic room with coloured walls and an asymmetric marker: wall order and
-handedness are preserved (nothing is mirrored). If the lens is not 180 degrees,
-pass `--fisheye-fov`. Dewarping is a re-encode (libx264 CRF 18); the bit-exact
-MP4 is still written alongside it.
+A fisheye camera stores a circular image, and how it is mounted decides what
+that circle means. The tool handles both mountings and, by default, measures
+which one it is looking at (`--mount auto`):
+
+- **Ceiling** (looking straight down): the floor fills the middle, the walls
+  form a ring near the rim. `--dewarp double` produces two normal 180-degree
+  views (`_A.mp4`, `_B.mp4`), the same "double panorama" idea the vendor
+  client offers; `--dewarp panorama` produces one 360-degree strip. This is
+  ffmpeg's `v360` filter (`fisheye` in, `hequirect` out, `pitch=90`,
+  `rorder=pyr`, `yaw=0|180`).
+- **Wall** (looking horizontally out of a wall): only the lower hemisphere has
+  picture, the upper half of the circle is black because the camera masks it.
+  People already stand upright, so one view (`_wall.mp4`, `pitch=0`) is
+  produced that straightens the verticals and flattens the barrel distortion.
+  Auto-detection reads a frame and compares the upper and lower halves against
+  the frame's own black level (video black is 16, not 0). Force it with
+  `--mount ceiling|wall` if a scene fools it.
+
+Both are cropped to the band from 15 degrees above the horizon down to the
+nadir. The projections are verified in the test-suite on a synthetic room with
+coloured walls and an asymmetric marker, once per mounting: wall order and
+handedness are preserved (nothing is mirrored) and the floor ends up at the
+bottom. If the lens is not 180 degrees, pass `--fisheye-fov`. Dewarping is a
+re-encode (libx264 CRF 18); the bit-exact MP4 is still written alongside it.
 
 ## The format
 
@@ -121,8 +134,9 @@ testsrc2` in CI), so the whole pipeline is tested without any real footage:
 header round trip, three-segment join, frame-for-frame `framemd5` equality
 between the archive's H.264 and the produced MP4, a deliberately damaged
 keyframe being reported (not hidden), the CLI's exit codes and JSON report,
-every output format, and the dewarp geometry on a synthetic fisheye. Run
-`pytest` (needs ffmpeg).
+every output format, the dewarp geometry on synthetic ceiling- and
+wall-mounted fisheyes, and the mount detection on both. Run `pytest` (needs
+ffmpeg).
 
 ## Limits
 
