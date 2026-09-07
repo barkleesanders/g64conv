@@ -37,8 +37,8 @@ from __future__ import annotations
 
 import datetime
 import struct
+from collections.abc import Iterator
 from dataclasses import dataclass, field
-from typing import Iterator
 
 FILETIME_EPOCH = datetime.datetime(1601, 1, 1, tzinfo=datetime.timezone.utc)
 START_CODE_PREFIX = "Genetec Omnicast Archive "
@@ -89,10 +89,10 @@ def _i64(b: bytes, o: int) -> int:
 
 def _guid(g: bytes) -> str:
     """.NET Guid byte order: the first three fields are little-endian."""
-    return "%08x-%04x-%04x-%s-%s" % (
-        _u32(g, 0), struct.unpack_from("<H", g, 4)[0], struct.unpack_from("<H", g, 6)[0],
-        g[8:10].hex(), g[10:16].hex(),
-    )
+    d1 = _u32(g, 0)
+    d2 = struct.unpack_from("<H", g, 4)[0]
+    d3 = struct.unpack_from("<H", g, 6)[0]
+    return f"{d1:08x}-{d2:04x}-{d3:04x}-{g[8:10].hex()}-{g[10:16].hex()}"
 
 
 @dataclass
@@ -139,58 +139,76 @@ def parse_header(b: bytes) -> Header:
         if b[o]:
             raise G64Error("password-encrypted header (v5.32) is not supported")
         o += 1
-    et = _i64(b, o); o += 8
+    et = _i64(b, o)
+    o += 8
     end_time = None if et == -1 else filetime_to_datetime(et)
     tzsize = 52 if ver >= 7 else 48
-    tz_bias = _i32(b, o + (8 if ver >= 7 else 4)); o += tzsize
+    tz_bias = _i32(b, o + (8 if ver >= 7 else 4))
+    o += tzsize
 
     def guid() -> str:
         nonlocal o
-        g = b[o:o + 16]; o += 16
+        g = b[o:o + 16]
+        o += 16
         return _guid(g)
 
     def wstr() -> str:
         nonlocal o
-        n = _i32(b, o); o += 4
+        n = _i32(b, o)
+        o += 4
         if n <= 0 or n > 102400:
             return ""
-        s = b[o:o + n * 2].decode("utf-16-le", "replace"); o += n * 2
+        s = b[o:o + n * 2].decode("utf-16-le", "replace")
+        o += n * 2
         return s
 
     h = Header(startcode=start, version=ver, header_size=0, end_time_utc=end_time,
                tz_bias_min=tz_bias, collection_guid=guid(), collection_name=wstr())
     if ver >= 9:
-        h.encoder_guid = guid(); h.encoder_name = wstr()
-        h.usage_guid = guid(); h.origin_guid = guid(); h.mediatype_guid = guid()
-    h.file_properties = _i32(b, o); o += 4
+        h.encoder_guid = guid()
+        h.encoder_name = wstr()
+        h.usage_guid = guid()
+        h.origin_guid = guid()
+        h.mediatype_guid = guid()
+    h.file_properties = _i32(b, o)
+    o += 4
     if ver >= 6:
-        n = _i32(b, o); o += 4
+        n = _i32(b, o)
+        o += 4
         if 0 < n < 102400:
-            h.xml = b[o:o + n].decode("utf-16-le", "replace"); o += n
-    wm = b[o]; o += 1
+            h.xml = b[o:o + n].decode("utf-16-le", "replace")
+            o += n
+    wm = b[o]
+    o += 1
     h.watermarked = bool(wm)
     if wm:
-        pk = _i32(b, o); o += 4
+        pk = _i32(b, o)
+        o += 4
         if pk < 0 or pk > 102400:
             raise G64Error(f"invalid watermark public key size {pk}")
         o += pk
-        ed = struct.unpack_from("<h", b, o)[0]; o += 2
-        h.wm_type = struct.unpack_from("<H", b, o)[0]; o += 2
+        ed = struct.unpack_from("<h", b, o)[0]
+        o += 2
+        h.wm_type = struct.unpack_from("<H", b, o)[0]
+        o += 2
         if ed <= 0:
             raise G64Error(f"invalid watermark data size {ed}")
         o += ed
         h.wm_encdata_len = ed
     if ver >= 10:
-        h.thirdparty_wm = struct.unpack_from("<H", b, o)[0]; o += 2
+        h.thirdparty_wm = struct.unpack_from("<H", b, o)[0]
+        o += 2
     h.header_size = o
     return h
 
 
 def first_frame_offset(b: bytes, o: int) -> int:
     """Skip the footer marker: 1 byte 'seek table at end', else an inline table."""
-    seek_at_end = b[o]; o += 1
+    seek_at_end = b[o]
+    o += 1
     if not seek_at_end:
-        n = _i32(b, o); o += 4
+        n = _i32(b, o)
+        o += 4
         if 0 < n <= 50_000_000:
             o += n
     return o + 4
@@ -219,7 +237,8 @@ def iter_frames(b: bytes, o: int, wm_len: int) -> Iterator[Frame]:
         t = _i64(b, o)
         if t == -1 or b[o:o + 8] == b"\0" * 8:
             return
-        opt = b[o + 8]; size = _u32(b, o + 9)
+        opt = b[o + 8]
+        size = _u32(b, o + 9)
         if size < 12 or o + 13 + size > n:
             return
         yield Frame(o, t, opt, o + 13, size)
@@ -231,9 +250,12 @@ def split_rtp(b: bytes, po: int, size: int) -> Iterator[tuple[int, bytes]]:
     if (b[po + 1] & 0x7F) != PT_ARCHIVER_FRAME:
         yield 0, b[po:po + size]
         return
-    o = po + 12; end = po + size
+    o = po + 12
+    end = po + size
     while o + 6 <= end:
-        comp = b[o + 1]; ln = struct.unpack_from(">H", b, o + 2)[0]; o += 6
+        comp = b[o + 1]
+        ln = struct.unpack_from(">H", b, o + 2)[0]
+        o += 6
         if ln == 0 or o + ln > end:
             return
         yield comp, b[o:o + ln]
@@ -285,7 +307,7 @@ class Segment:
     data: bytes = b""
 
     @classmethod
-    def parse(cls, name: str, data: bytes) -> "Segment":
+    def parse(cls, name: str, data: bytes) -> Segment:
         h = parse_header(data)
         start = first_frame_offset(data, h.header_size)
         return cls(name, h, list(iter_frames(data, start, h.wm_encdata_len)), data)

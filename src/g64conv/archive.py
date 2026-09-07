@@ -7,8 +7,8 @@ import datetime
 import os
 import re
 import zipfile
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Callable
 from xml.etree import ElementTree as ET
 
 from .format import G64Error

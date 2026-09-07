@@ -1,14 +1,13 @@
 """Dewarp geometry (wall order, handedness) and multi-format output."""
 import os
 
+from conftest import mean_rgb, probe_int
 from g64conv.dewarp import DewarpSpec, detect_mount, dewarp
 from g64conv.transcode import transcode
 
-from conftest import mean_rgb, probe_int
-
 
 def _closest(rgb, palette):
-    return min(palette, key=lambda k: sum((a - b) ** 2 for a, b in zip(rgb, palette[k])))
+    return min(palette, key=lambda k: sum((a - b) ** 2 for a, b in zip(rgb, palette[k], strict=False)))
 
 
 WALLS = {"red": (0xC0, 0x40, 0x40), "green": (0x40, 0xC0, 0x40), "blue": (0x40, 0x40, 0xC0), "yellow": (0xC0, 0xC0, 0x40)}
@@ -52,7 +51,8 @@ def test_wall_mount_view_order_and_no_mirror(tmp_path, wall_fisheye_video, ffmpe
     # mount=auto must pick "wall" from the masked upper hemisphere and emit ONE view
     outs = dewarp(wall_fisheye_video, str(tmp_path), DewarpSpec(mount="auto", width=720))
     assert [os.path.basename(o) for o in outs] == ["wallfisheye_wall.mp4"]
-    v = outs[0]; w = 720
+    v = outs[0]
+    w = 720
     h = probe_int(v, "height")
     y = int(h * 0.22)
     # facing the front wall: blue on the left quarter, red across the middle, green on the right

@@ -4,13 +4,21 @@ from __future__ import annotations
 
 import io
 import os
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from fractions import Fraction
-from typing import Callable
 
 from . import format as g64
 from .archive import Source, safe_name
-from .h264 import NAL_IDR, NAL_PPS, NAL_SPS, START_CODE, Depacketizer, annexb, sps_dimensions
+from .h264 import (
+    NAL_IDR,
+    NAL_PPS,
+    NAL_SPS,
+    START_CODE,
+    Depacketizer,
+    annexb,
+    sps_dimensions,
+)
 from .tools import ffprobe_json, require, run
 
 
@@ -81,10 +89,21 @@ def convert_source(source: Source, out_dir: str, *, keep_h264: bool = False,
     import av
 
     frames_total = frames_written = damaged = non_video = keyframes = 0
-    t0 = None; sps = None; pps: list[bytes] = []; width = height = 0
-    out_container = None; stream = None; out_path = ""; h264_fh = None
-    last_pts = -1; codec_seen: set[int] = set(); tz_bias = None; wm = None
-    rotations: dict[int, int] = {}; damaged_times: list[str] = []; segs_info: list[dict] = []
+    t0 = None
+    sps = None
+    pps: list[bytes] = []
+    width = height = 0
+    out_container = None
+    stream = None
+    out_path = ""
+    h264_fh = None
+    last_pts = -1
+    codec_seen: set[int] = set()
+    tz_bias = None
+    wm = None
+    rotations: dict[int, int] = {}
+    damaged_times: list[str] = []
+    segs_info: list[dict] = []
     os.makedirs(out_dir, exist_ok=True)
     try:
         n_segs = len(source.segments)
@@ -93,12 +112,15 @@ def convert_source(source: Source, out_dir: str, *, keep_h264: bool = False,
             h = seg.header
             if h.frames_encrypted:
                 raise g64.G64Error(f"{seg_name}: frames are SRTP-encrypted; cannot convert without the key")
-            tz_bias = h.tz_bias_min; wm = h.wm_type if h.watermarked else None
+            tz_bias = h.tz_bias_min
+            wm = h.wm_type if h.watermarked else None
             seg_first = seg_last = None
             for fr in seg.frames:
                 frames_total += 1
-                seg_first = seg_first or fr.filetime; seg_last = fr.filetime
-                dp = Depacketizer(); saw_video = False
+                seg_first = seg_first or fr.filetime
+                seg_last = fr.filetime
+                dp = Depacketizer()
+                saw_video = False
                 for comp, rtp in g64.split_rtp(seg.data, fr.payload_offset, fr.payload_size):
                     pk = g64.parse_rtp(rtp)
                     if pk is None:
@@ -112,13 +134,16 @@ def convert_source(source: Source, out_dir: str, *, keep_h264: bool = False,
                         continue
                     if comp in g64.HEVC_COMPRESSION:
                         raise g64.G64Error(f"{seg_name}: HEVC (compression type {comp}) is not supported yet")
-                    codec_seen.add(comp); saw_video = True
+                    codec_seen.add(comp)
+                    saw_video = True
                     dp.add(pk.payload)
                 nals = dp.finish()
                 if not saw_video:
-                    non_video += 1; continue
+                    non_video += 1
+                    continue
                 if dp.dropped_fragments or not nals:
-                    damaged += 1; damaged_times.append(fr.time.isoformat())
+                    damaged += 1
+                    damaged_times.append(fr.time.isoformat())
                 if not nals:
                     continue
                 for n in nals:
@@ -209,7 +234,8 @@ def verify(result: ConvertResult) -> bool:
         return False
     st = j["streams"][0]
     errs = j["_stderr"]
-    frames = int(st.get("nb_read_frames", 0)); packets = int(st.get("nb_read_packets", 0))
+    frames = int(st.get("nb_read_frames", 0))
+    packets = int(st.get("nb_read_packets", 0))
     rot = None
     for sd in st.get("side_data_list", []) or []:
         if "rotation" in sd:

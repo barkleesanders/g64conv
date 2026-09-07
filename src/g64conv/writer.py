@@ -16,7 +16,7 @@ import zipfile
 from fractions import Fraction
 
 from . import format as g64
-from .h264 import NAL_IDR, START_CODE, split_annexb
+from .h264 import NAL_IDR, split_annexb
 from .tools import require, run
 
 MTU_PAYLOAD = 1400
@@ -63,7 +63,8 @@ def packetize(nals: list[bytes], seq: int, ts: int) -> tuple[list[bytes], int]:
     for i, n in enumerate(nals):
         last_nal = i == len(nals) - 1
         if len(n) <= MTU_PAYLOAD:
-            pkts.append(_rtp(seq, ts, n, last_nal)); seq += 1
+            pkts.append(_rtp(seq, ts, n, last_nal))
+            seq += 1
             continue
         hdr, body = n[0], n[1:]
         ind = (hdr & 0xE0) | 28
@@ -74,7 +75,8 @@ def packetize(nals: list[bytes], seq: int, ts: int) -> tuple[list[bytes], int]:
             o += len(chunk)
             end = o >= len(body)
             fu = typ | (0x80 if o == len(chunk) else 0) | (0x40 if end else 0)
-            pkts.append(_rtp(seq, ts, bytes([ind, fu]) + chunk, last_nal and end)); seq += 1
+            pkts.append(_rtp(seq, ts, bytes([ind, fu]) + chunk, last_nal and end))
+            seq += 1
     return pkts, seq
 
 
@@ -107,7 +109,7 @@ def access_units_from_video(video_path: str, *, crf: int = 23, gop: int = 12) ->
     for i, pkt in enumerate(c.demux(video=0)):
         if pkt.size == 0:
             continue
-        aus.append((int(round(i * 1000 / fr)), split_annexb(bytes(pkt))))
+        aus.append((round(i * 1000 / fr), split_annexb(bytes(pkt))))
     c.close()
     return aus
 
@@ -173,14 +175,15 @@ def write_g64x(video_path: str, out_path: str, *, collection: str = "synthetic",
                          start=start, segment_seconds=segment_seconds)
         files = []
         for s in segs:
-            data = open(s, "rb").read()
+            with open(s, "rb") as fh:
+                data = fh.read()
             seg = g64.Segment.parse(os.path.basename(s), data)
             files.append((os.path.basename(s), data, seg.frames[0].time, seg.frames[-1].time))
         src_guid = str(uuid.uuid4())
         xml = ["<G64xArchiveFileHeader>", "  <FileVersion>1</FileVersion>",
                f"  <entityName>{collection}</entityName>", "  <UniqueSources>",
-               f'    <UniqueSource Id="0" Collection="{src_guid}" CollectionName="{collection}" '
-               f'Encoder="{src_guid}" EncoderName="{collection}" />',
+               (f'    <UniqueSource Id="0" Collection="{src_guid}" CollectionName="{collection}" '
+                f'Encoder="{src_guid}" EncoderName="{collection}" />'),
                "  </UniqueSources>", "  <Files>"]
         for name, _, a, b in files:
             xml.append(f'    <File SourceId="0" start="{_iso_ms(a)}" end="{_iso_ms(b)}" '

@@ -16,9 +16,11 @@ from g64conv.writer import write_g64x
 def server(tmp_path_factory):
     out = tmp_path_factory.mktemp("gui-out")
     srv = make_server(str(out), port=0)
-    t = threading.Thread(target=srv.serve_forever, daemon=True); t.start()
+    t = threading.Thread(target=srv.serve_forever, daemon=True)
+    t.start()
     yield f"http://127.0.0.1:{srv.server_address[1]}", str(out)
-    srv.shutdown(); srv.server_close()
+    srv.shutdown()
+    srv.server_close()
 
 
 def _req(url, method="GET", body=None, headers=None, raw=None):
@@ -54,7 +56,7 @@ def test_page_and_state(server):
 
 
 def test_guards(server, tmp_path):
-    base, out = server
+    base, _ = server
     # mutation without the custom header is refused (a cross-origin page cannot add it without CORS)
     code, _, body = _req(base + "/api/convert", "POST", {"paths": ["/nope.g64x"]})
     assert code == 403 and API_HEADER in json.loads(body)["error"]
@@ -96,9 +98,9 @@ def test_upload_convert_play(server, sample_video, ffmpeg, tmp_path):
     assert job["progress"] == 1.0
     res = job["results"][0]
     assert res["frames_written"] == 20 and res["verify"]["mp4_decoded_frames"] == 20
-    assert any("OK" in l and "20 written" in l for l in job["log"])
+    assert any("OK" in line and "20 written" in line for line in job["log"])
     names = [o["name"] for o in st["outputs"]]
-    mp4 = [o for o in st["outputs"] if o["name"].endswith(".mp4")][0]
+    mp4 = next(o for o in st["outputs"] if o["name"].endswith(".mp4"))
     assert mp4["playable"] and mp4["width"] == 320 and mp4["frames"] == 20
     assert any(n.endswith(".mkv") for n in names)
     # the <video> element seeks with Range requests
@@ -127,14 +129,29 @@ def test_subfolder_outputs_are_listed(server, sample_video):
     st = json.loads(_req(base + "/api/state")[2])
     names = [o["name"] for o in st["outputs"]]
     assert "dewarped/cam_A.mp4" in names and not any("ignored" in n for n in names)
-    item = [o for o in st["outputs"] if o["name"] == "dewarped/cam_A.mp4"][0]
+    item = next(o for o in st["outputs"] if o["name"] == "dewarped/cam_A.mp4")
     assert item["url"] == "/files/dewarped/cam_A.mp4" and item["width"] == 320
-    code, hdr, body = _req(base + item["url"], headers={"Range": "bytes=0-9"})
+    code, _, body = _req(base + item["url"], headers={"Range": "bytes=0-9"})
     assert code == 206 and len(body) == 10
 
 
-def test_convert_failure_is_reported(server, tmp_path):
+def test_odd_filenames_and_bad_length(server, sample_video):
     base, out = server
+    import shutil
+    odd = os.path.join(out, "cam #2 50%.mp4")
+    shutil.copy(sample_video, odd)
+    st = json.loads(_req(base + "/api/state")[2])
+    item = next(o for o in st["outputs"] if o["name"] == "cam #2 50%.mp4")
+    assert item["url"] == "/files/cam%20%232%2050%25.mp4"
+    code, _, body = _req(base + item["url"], headers={"Range": "bytes=0-9"})
+    assert code == 206 and len(body) == 10
+    # a malformed Content-Length is a 400, not a dropped connection
+    code, _, body = _req(base + "/api/convert", "POST", raw=b"{}", headers={API_HEADER: "1", "Content-Length": "abc"})
+    assert code == 400 and "Content-Length" in json.loads(body)["error"]
+
+
+def test_convert_failure_is_reported(server, tmp_path):
+    base, _ = server
     bad = tmp_path / "bad.g64"
     bad.write_bytes(b"not an archive at all" * 10)
     code, _, _ = _req(base + "/api/convert", "POST", {"paths": [str(bad)]}, {API_HEADER: "1"})

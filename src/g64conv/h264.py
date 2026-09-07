@@ -27,15 +27,18 @@ class Depacketizer:
             return
         t = payload[0] & 0x1F
         if 1 <= t <= 23:
-            self._flush_fu(); self.nals.append(bytes(payload))
+            self._flush_fu()
+            self.nals.append(bytes(payload))
         elif t == 24:  # STAP-A
             self._flush_fu()
             o = 1
             while o + 2 <= len(payload):
-                ln = struct.unpack_from(">H", payload, o)[0]; o += 2
+                ln = struct.unpack_from(">H", payload, o)[0]
+                o += 2
                 if ln == 0 or o + ln > len(payload):
                     break
-                self.nals.append(bytes(payload[o:o + ln])); o += ln
+                self.nals.append(bytes(payload[o:o + ln]))
+                o += ln
         elif t == 28:  # FU-A
             if len(payload) < 2:
                 return
@@ -49,13 +52,16 @@ class Depacketizer:
                 self.dropped_fragments += 1
                 return
             if fu & 0x40:  # end
-                self.nals.append(bytes(self._fu)); self._fu = None
+                self.nals.append(bytes(self._fu))
+                self._fu = None
         else:
             self._flush_fu()  # STAP-B / MTAP / FU-B are not produced by these archives
 
     def _flush_fu(self) -> None:
         if self._fu is not None:
-            self.nals.append(bytes(self._fu)); self._fu = None; self.dropped_fragments += 1
+            self.nals.append(bytes(self._fu))
+            self._fu = None
+            self.dropped_fragments += 1
 
     def finish(self) -> list[bytes]:
         self._flush_fu()
@@ -65,10 +71,13 @@ class Depacketizer:
 
 class _BitReader:
     def __init__(self, data: bytes) -> None:
-        self.d = data; self.p = 0
+        self.d = data
+        self.p = 0
 
     def bit(self) -> int:
-        v = (self.d[self.p >> 3] >> (7 - (self.p & 7))) & 1; self.p += 1; return v
+        v = (self.d[self.p >> 3] >> (7 - (self.p & 7))) & 1
+        self.p += 1
+        return v
 
     def bits(self, n: int) -> int:
         v = 0
@@ -91,24 +100,32 @@ class _BitReader:
 
 def unescape(nal: bytes) -> bytes:
     """Remove emulation-prevention bytes (00 00 03 -> 00 00)."""
-    out = bytearray(); z = 0
+    out = bytearray()
+    z = 0
     for c in nal:
         if z >= 2 and c == 3:
-            z = 0; continue
-        out.append(c); z = z + 1 if c == 0 else 0
+            z = 0
+            continue
+        out.append(c)
+        z = z + 1 if c == 0 else 0
     return bytes(out)
 
 
 def sps_dimensions(sps: bytes) -> tuple[int, int]:
     """Coded width/height (after cropping) from an SPS NAL including its header byte."""
     r = _BitReader(unescape(sps[1:]))
-    profile = r.bits(8); r.bits(8); r.bits(8); r.ue()
+    profile = r.bits(8)
+    r.bits(8)
+    r.bits(8)
+    r.ue()
     chroma = 1
     if profile in (100, 110, 122, 244, 44, 83, 86, 118, 128, 138, 139, 134, 135):
         chroma = r.ue()
         if chroma == 3:
             r.bit()
-        r.ue(); r.ue(); r.bit()
+        r.ue()
+        r.ue()
+        r.bit()
         if r.bit():  # scaling matrices
             for i in range(8 if chroma != 3 else 12):
                 if r.bit():
@@ -122,16 +139,21 @@ def sps_dimensions(sps: bytes) -> tuple[int, int]:
     if poc == 0:
         r.ue()
     elif poc == 1:
-        r.bit(); r.se(); r.se()
+        r.bit()
+        r.se()
+        r.se()
         for _ in range(r.ue()):
             r.se()
-    r.ue(); r.bit()
-    w_mbs = r.ue() + 1; h_map = r.ue() + 1
+    r.ue()
+    r.bit()
+    w_mbs = r.ue() + 1
+    h_map = r.ue() + 1
     frame_mbs_only = r.bit()
     if not frame_mbs_only:
         r.bit()
     r.bit()
-    w = w_mbs * 16; h = (2 - frame_mbs_only) * h_map * 16
+    w = w_mbs * 16
+    h = (2 - frame_mbs_only) * h_map * 16
     if r.bit():  # frame cropping
         cl, cr, ct, cb = r.ue(), r.ue(), r.ue(), r.ue()
         if chroma == 0:
@@ -139,7 +161,8 @@ def sps_dimensions(sps: bytes) -> tuple[int, int]:
         else:
             sub_w = 2 if chroma in (1, 2) else 1
             sub_h = (2 if chroma == 1 else 1) * (2 - frame_mbs_only)
-        w -= (cl + cr) * sub_w; h -= (ct + cb) * sub_h
+        w -= (cl + cr) * sub_w
+        h -= (ct + cb) * sub_h
     return w, h
 
 
@@ -149,13 +172,16 @@ def annexb(nals: list[bytes]) -> bytes:
 
 def split_annexb(data: bytes) -> list[bytes]:
     """Split an Annex-B byte stream into NAL units (without start codes)."""
-    out = []; i = 0; n = len(data)
+    out = []
+    i = 0
+    n = len(data)
     starts = []
     while True:
         j = data.find(b"\0\0\1", i)
         if j < 0:
             break
-        starts.append(j + 3); i = j + 3
+        starts.append(j + 3)
+        i = j + 3
     for k, s in enumerate(starts):
         e = starts[k + 1] - 3 if k + 1 < len(starts) else n
         while e > s and data[e - 1] == 0:  # trailing zero of a 4-byte start code

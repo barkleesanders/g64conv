@@ -11,8 +11,11 @@ def probe(path: str, max_frames: int | None = None) -> list[dict]:
     for src in discover(path):
         for name, load in src.segments:
             seg = g64.Segment.parse(name, load())
-            nal_hist: dict[str, int] = {}; comp_hist: dict[int, int] = {}; pt_hist: dict[int, int] = {}
-            rotations: dict[int, int] = {}; times = []
+            nal_hist: dict[str, int] = {}
+            comp_hist: dict[int, int] = {}
+            pt_hist: dict[int, int] = {}
+            rotations: dict[int, int] = {}
+            times = []
             for i, fr in enumerate(seg.frames):
                 if max_frames and i >= max_frames:
                     break

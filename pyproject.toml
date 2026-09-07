@@ -21,6 +21,23 @@ dependencies = ["av>=12"]
 [project.optional-dependencies]
 test = ["pytest>=8"]
 
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF", "PLW", "DTZ", "TRY004", "ISC", "PIE", "BLE"]
+ignore = ["E501"]  # long lines are allowed up to the formatter's judgement; the tables in format.py read better wide
+
+[tool.ruff.lint.per-file-ignores]
+# convert.py: the optional .h264 side file stays open for the whole segment loop and is closed in the
+# surrounding finally; a context manager would have to wrap the entire loop for no gain.
+"src/g64conv/convert.py" = ["SIM115"]
+# gui.py: the job runner must survive ANY exception a job raises (it reports it in the job log and keeps
+# serving); that catch-all is the point, not an oversight.
+"src/g64conv/gui.py" = ["BLE001"]
+
 [project.scripts]
 g64conv = "g64conv.cli:main"
 

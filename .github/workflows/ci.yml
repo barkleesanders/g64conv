@@ -3,6 +3,8 @@ on:
   push:
     branches: [main]
   pull_request:
+permissions:
+  contents: read
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -16,6 +18,7 @@ jobs:
           python-version: ${{ matrix.python }}
       - run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - run: ffmpeg -version | head -1
-      - run: pip install -e .[test]
+      - run: pip install -e .[test] ruff
+      - run: ruff check src tests
       - run: g64conv --version
       - run: pytest -q

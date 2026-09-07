@@ -20,7 +20,7 @@ def require(name: str) -> str:
 
 def run(cmd: list[str], **kw) -> subprocess.CompletedProcess:
     kw.setdefault("text", True)
-    return subprocess.run(cmd, capture_output=True, **kw)
+    return subprocess.run(cmd, capture_output=True, check=False, **kw)
 
 
 def ffprobe_json(path: str, *entries: str, count_frames: bool = False) -> dict:
@@ -32,7 +32,7 @@ def ffprobe_json(path: str, *entries: str, count_frames: bool = False) -> dict:
     if p.returncode != 0:
         raise RuntimeError("ffprobe failed: " + p.stderr.strip())
     j = json.loads(p.stdout or "{}")
-    j["_stderr"] = [l for l in p.stderr.splitlines() if l.strip()]
+    j["_stderr"] = [ln for ln in p.stderr.splitlines() if ln.strip()]
     return j
 
 
@@ -51,12 +51,12 @@ def run_ffmpeg_progress(cmd: list[str], duration_s: float | None, on_progress=No
     callback receives -1 (unknown)."""
     if on_progress is None:
         return run(cmd)
-    full = cmd[:-1] + ["-progress", "pipe:1", "-nostats", cmd[-1]]
+    full = [*cmd[:-1], "-progress", "pipe:1", "-nostats", cmd[-1]]
     proc = subprocess.Popen(full, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     assert proc.stdout is not None
-    for line in proc.stdout:
-        line = line.strip()
-        if line.startswith("out_time_us=") or line.startswith("out_time_ms="):
+    for raw_line in proc.stdout:
+        line = raw_line.strip()
+        if line.startswith(("out_time_us=", "out_time_ms=")):
             try:
                 us = int(line.split("=", 1)[1])
             except ValueError:

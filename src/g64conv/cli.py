@@ -24,7 +24,8 @@ EXIT_OK, EXIT_USAGE, EXIT_FAIL, EXIT_PARTIAL, EXIT_DEPS = 0, 2, 3, 4, 5
 
 class Out:
     def __init__(self, quiet: bool, color: bool) -> None:
-        self.quiet = quiet; self.color = color
+        self.quiet = quiet
+        self.color = color
 
     def say(self, s: str) -> None:
         if not self.quiet:
@@ -135,32 +136,41 @@ def cmd_convert(a, out: Out) -> int:
     from .dewarp import DewarpSpec, dewarp
     from .transcode import transcode
 
-    worst = EXIT_OK; report = []
+    worst = EXIT_OK
+    report = []
     formats = [f for f in (a.format or []) if f != "mp4"]
     for inp in a.inputs:
         if not os.path.isfile(inp):
-            out.status("MISSING", inp); worst = max(worst, EXIT_USAGE); continue
+            out.status("MISSING", inp)
+            worst = max(worst, EXIT_USAGE)
+            continue
         try:
             sources = discover(inp)
         except (G64Error, OSError) as e:
-            out.status("FAILED", f"{inp}: {e}"); worst = max(worst, EXIT_FAIL); continue
+            out.status("FAILED", f"{inp}: {e}")
+            worst = max(worst, EXIT_FAIL)
+            continue
         out.say(f"== {inp}: {len(sources)} video source(s)")
         for src in sources:
             out.say(f"-- {src.label} ({len(src.segments)} segment(s))")
             if a.dry_run:
-                out.status("DRY-RUN", f"would write {src.label} -> {a.out_dir} formats={['mp4'] + formats} dewarp={a.dewarp}")
+                out.status("DRY-RUN", f"would write {src.label} -> {a.out_dir} formats={['mp4', *formats]} dewarp={a.dewarp}")
                 continue
             os.makedirs(a.out_dir, exist_ok=True)
             try:
                 r = convert_source(src, a.out_dir, keep_h264=a.keep_h264, log=out.say)
             except G64Error as e:
-                out.status("FAILED", f"{src.label}: {e}"); worst = max(worst, EXIT_FAIL); continue
+                out.status("FAILED", f"{src.label}: {e}")
+                worst = max(worst, EXIT_FAIL)
+                continue
             status = "OK"
             if not a.no_verify and not verify(r):
-                status = "VERIFY-FAIL"; worst = max(worst, EXIT_FAIL)
+                status = "VERIFY-FAIL"
+                worst = max(worst, EXIT_FAIL)
                 out.status(status, f"{r.output}: {r.verify}")
             if r.frames_damaged and status == "OK":
-                status = "PARTIAL"; worst = max(worst, EXIT_PARTIAL)
+                status = "PARTIAL"
+                worst = max(worst, EXIT_PARTIAL)
             r.status = status
             d = r.to_dict()
             d["extra_outputs"] = {}
@@ -169,12 +179,14 @@ def cmd_convert(a, out: Out) -> int:
                     try:
                         d["extra_outputs"][fmt] = transcode(r.output, fmt, a.out_dir)
                     except RuntimeError as e:
-                        out.status("FAILED", f"{fmt}: {e}"); worst = max(worst, EXIT_FAIL)
+                        out.status("FAILED", f"{fmt}: {e}")
+                        worst = max(worst, EXIT_FAIL)
                 if a.dewarp != "none":
                     try:
                         d["extra_outputs"]["dewarp"] = dewarp(r.output, a.out_dir, DewarpSpec(mode=a.dewarp, mount=a.mount, fov=a.fisheye_fov))
                     except RuntimeError as e:
-                        out.status("FAILED", f"dewarp: {e}"); worst = max(worst, EXIT_FAIL)
+                        out.status("FAILED", f"dewarp: {e}")
+                        worst = max(worst, EXIT_FAIL)
             report.append(d)
             out.status(status, f"{r.output}  [{r.width}x{r.height} h264, {r.frames_written} video frames of "
                        f"{r.frames_in_archive} ({r.frames_non_video} metadata-only, {r.frames_damaged} damaged), "
@@ -188,17 +200,23 @@ def cmd_convert(a, out: Out) -> int:
 def cmd_dewarp(a, out: Out) -> int:
     from .dewarp import DewarpSpec, dewarp
 
-    worst = EXIT_OK; report = []
+    worst = EXIT_OK
+    report = []
     spec = DewarpSpec(mode=a.mode, mount=a.mount, fov=a.fov, width=a.width, above_horizon_deg=a.above_horizon, crf=a.crf)
     for inp in a.inputs:
         if not os.path.isfile(inp):
-            out.status("MISSING", inp); worst = max(worst, EXIT_USAGE); continue
+            out.status("MISSING", inp)
+            worst = max(worst, EXIT_USAGE)
+            continue
         if a.dry_run:
-            out.status("DRY-RUN", f"would dewarp {inp} mode={a.mode} mount={a.mount} fov={a.fov:g} -> {a.out_dir}"); continue
+            out.status("DRY-RUN", f"would dewarp {inp} mode={a.mode} mount={a.mount} fov={a.fov:g} -> {a.out_dir}")
+            continue
         try:
             outs = dewarp(inp, a.out_dir, spec)
         except RuntimeError as e:
-            out.status("FAILED", f"{inp}: {e}"); worst = max(worst, EXIT_FAIL); continue
+            out.status("FAILED", f"{inp}: {e}")
+            worst = max(worst, EXIT_FAIL)
+            continue
         report.append({"input": inp, "outputs": outs, "mode": a.mode, "mount": a.mount, "fov": a.fov})
         for o in outs:
             out.status("OK", o)
@@ -216,18 +234,25 @@ def cmd_gui(a, out: Out) -> int:
 def cmd_transcode(a, out: Out) -> int:
     from .transcode import transcode
 
-    worst = EXIT_OK; report = []
+    worst = EXIT_OK
+    report = []
     for inp in a.inputs:
         if not os.path.isfile(inp):
-            out.status("MISSING", inp); worst = max(worst, EXIT_USAGE); continue
+            out.status("MISSING", inp)
+            worst = max(worst, EXIT_USAGE)
+            continue
         for fmt in a.format:
             if a.dry_run:
-                out.status("DRY-RUN", f"would write {fmt} of {inp}"); continue
+                out.status("DRY-RUN", f"would write {fmt} of {inp}")
+                continue
             try:
                 o = transcode(inp, fmt, a.out_dir, fps=a.fps, scale_width=a.width)
             except RuntimeError as e:
-                out.status("FAILED", f"{inp} {fmt}: {e}"); worst = max(worst, EXIT_FAIL); continue
-            report.append({"input": inp, "format": fmt, "output": o}); out.status("OK", o)
+                out.status("FAILED", f"{inp} {fmt}: {e}")
+                worst = max(worst, EXIT_FAIL)
+                continue
+            report.append({"input": inp, "format": fmt, "output": o})
+            out.status("OK", o)
     _emit(a, report)
     return worst
 
@@ -236,11 +261,13 @@ def cmd_probe(a, out: Out) -> int:
     from .probe import probe
 
     if not os.path.isfile(a.input):
-        out.status("MISSING", a.input); return EXIT_USAGE
+        out.status("MISSING", a.input)
+        return EXIT_USAGE
     try:
         rep = probe(a.input, a.max_frames)
     except G64Error as e:
-        out.status("FAILED", str(e)); return EXIT_FAIL
+        out.status("FAILED", str(e))
+        return EXIT_FAIL
     if a.json:
         print(json.dumps(rep, indent=2, default=str))
     else:
@@ -258,18 +285,22 @@ def cmd_synth(a, out: Out) -> int:
     from .writer import write_g64, write_g64x
 
     if not os.path.isfile(a.video):
-        out.status("MISSING", a.video); return EXIT_USAGE
+        out.status("MISSING", a.video)
+        return EXIT_USAGE
     if a.dry_run:
-        out.status("DRY-RUN", f"would write {a.output} from {a.video}"); return EXIT_OK
+        out.status("DRY-RUN", f"would write {a.output} from {a.video}")
+        return EXIT_OK
     try:
         if a.output.lower().endswith(".g64x"):
             paths = [write_g64x(a.video, a.output, collection=a.collection, segment_seconds=a.segment_seconds)]
         elif a.output.lower().endswith(".g64"):
             paths = write_g64(a.video, a.output, collection=a.collection, segment_seconds=a.segment_seconds)
         else:
-            out.status("FAILED", "output must end in .g64 or .g64x"); return EXIT_USAGE
+            out.status("FAILED", "output must end in .g64 or .g64x")
+            return EXIT_USAGE
     except RuntimeError as e:
-        out.status("FAILED", str(e)); return EXIT_FAIL
+        out.status("FAILED", str(e))
+        return EXIT_FAIL
     for p in paths:
         out.status("OK", p)
     _emit(a, {"outputs": paths})

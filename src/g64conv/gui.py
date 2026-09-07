@@ -33,7 +33,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, quote, unquote, urlsplit
 
 from . import __version__
 from .format import G64Error
@@ -62,7 +62,7 @@ class Job:
     finished: float | None = None
 
     def note(self, s: str) -> None:
-        self.log.append(f"{datetime.datetime.now().strftime('%H:%M:%S')}  {s}")
+        self.log.append(f"{datetime.datetime.now().astimezone().strftime('%H:%M:%S')}  {s}")
 
     def to_dict(self) -> dict:
         return {"id": self.id, "kind": self.kind, "inputs": self.inputs, "options": self.options,
@@ -105,9 +105,13 @@ class Runner:
                 if job.status == "running":
                     job.status = "ok"
             except (G64Error, MissingDependency, RuntimeError, ValueError, OSError) as e:
-                job.status = "failed"; job.message = str(e); job.note(f"FAILED {e}")
+                job.status = "failed"
+                job.message = str(e)
+                job.note(f"FAILED {e}")
             except Exception as e:  # keep the server alive, report the surprise honestly
-                job.status = "failed"; job.message = f"{type(e).__name__}: {e}"; job.note(f"FAILED {job.message}")
+                job.status = "failed"
+                job.message = f"{type(e).__name__}: {e}"
+                job.note(f"FAILED {job.message}")
             finally:
                 job.finished = time.time()
                 if job.progress >= 0:
@@ -130,7 +134,7 @@ class Runner:
             sources += [(inp, s) for s in srcs]
         n = max(len(sources), 1)
         worst = "ok"
-        for i, (inp, src) in enumerate(sources):
+        for i, (_inp, src) in enumerate(sources):
             base = i / n
             job.message = f"converting {src.label}"
             job.note(f"-- {src.label} ({len(src.segments)} segment(s))")
@@ -145,28 +149,31 @@ class Runner:
             r.status = "OK" if ok else "VERIFY-FAIL"
             if ok and r.frames_damaged:
                 r.status = "PARTIAL"
-            d = r.to_dict(); d["extra_outputs"] = {}
+            d = r.to_dict()
+            d["extra_outputs"] = {}
             v = r.verify
             job.note(f"{r.status} {os.path.basename(r.output)}: {r.frames_written} written, "
                      f"{v.get('mp4_decoded_frames', '?')} decoded, {r.frames_damaged} damaged, rotation {r.genetec_rotation_deg}")
             if r.status == "VERIFY-FAIL":
-                worst = "failed"; job.note(f"   verify detail: {v}")
+                worst = "failed"
+                job.note(f"   verify detail: {v}")
             elif r.status == "PARTIAL" and worst == "ok":
                 worst = "partial"
             if r.status != "VERIFY-FAIL":
                 extras = len(formats) + (1 if dw != "none" else 0)
+
+                def extra_progress(k: int, base: float = base, extras: int = extras):
+                    def cb(f: float) -> None:
+                        job.progress = base + (0.75 + 0.25 * (k + max(f, 0.0)) / extras) / n
+                    return cb
                 for k, fmt in enumerate(formats):
                     job.message = f"{fmt} of {os.path.basename(r.output)}"
-                    cb = lambda f, k=k, base=base, extras=extras: setattr(
-                        job, "progress", base + (0.75 + 0.25 * (k + max(f, 0)) / extras) / n)
-                    d["extra_outputs"][fmt] = transcode(r.output, fmt, self.out_dir, progress=cb)
+                    d["extra_outputs"][fmt] = transcode(r.output, fmt, self.out_dir, progress=extra_progress(k))
                     job.note(f"   {fmt}: {os.path.basename(d['extra_outputs'][fmt])}")
                 if dw != "none":
                     job.message = f"dewarp of {os.path.basename(r.output)}"
-                    k = len(formats)
-                    cb = lambda f, k=k, base=base, extras=extras: setattr(
-                        job, "progress", base + (0.75 + 0.25 * (k + max(f, 0)) / extras) / n)
-                    outs = dewarp(r.output, self.out_dir, DewarpSpec(mode=dw, mount=mount), progress=cb)
+                    outs = dewarp(r.output, self.out_dir, DewarpSpec(mode=dw, mount=mount),
+                                  progress=extra_progress(len(formats)))
                     d["extra_outputs"]["dewarp"] = outs
                     job.note("   dewarp: " + ", ".join(os.path.basename(o) for o in outs))
             job.results.append(d)
@@ -192,12 +199,17 @@ class Runner:
         from .transcode import transcode
 
         fmts = job.options.get("formats", [])
-        total = max(len(job.inputs) * len(fmts), 1); k = 0
+        total = max(len(job.inputs) * len(fmts), 1)
+        k = 0
+
+        def step_progress(k: int):
+            def cb(f: float) -> None:
+                job.progress = (k + max(f, 0.0)) / total
+            return cb
         for inp in job.inputs:
             for fmt in fmts:
                 job.message = f"{fmt} of {os.path.basename(inp)}"
-                cb = lambda f, k=k: setattr(job, "progress", (k + max(f, 0)) / total)
-                out = transcode(inp, fmt, self.out_dir, progress=cb)
+                out = transcode(inp, fmt, self.out_dir, progress=step_progress(k))
                 job.results.append({"input": inp, "format": fmt, "output": out})
                 job.note(f"{fmt}: {os.path.basename(out)}")
                 k += 1
@@ -220,7 +232,7 @@ class Outputs:
         """Videos in the output directory and its subfolders (e.g. a dewarped/ folder
         made by an earlier run), named by their path relative to the output directory."""
         items = []
-        for rel_dir, depth in self._walk():
+        for rel_dir, _depth in self._walk():
             full_dir = os.path.join(self.out_dir, rel_dir) if rel_dir else self.out_dir
             try:
                 names = sorted(os.listdir(full_dir))
@@ -229,7 +241,7 @@ class Outputs:
             for name in names:
                 p = os.path.join(full_dir, name)
                 rel = os.path.join(rel_dir, name) if rel_dir else name
-                url = "/files/" + "/".join(rel.split(os.sep))
+                url = "/files/" + "/".join(quote(seg, safe="") for seg in rel.split(os.sep))
                 low = name.lower()
                 if os.path.isfile(p) and low.endswith(OUTPUT_FILE_EXTS):
                     st = os.stat(p)
@@ -355,14 +367,24 @@ class Handler(BaseHTTPRequestHandler):
     def _err(self, code: int, msg: str) -> None:
         self._json(code, {"error": msg})
 
+    def _content_length(self) -> int:
+        raw = self.headers.get("Content-Length") or "0"
+        try:
+            n = int(raw)
+        except ValueError:
+            raise ValueError(f"bad Content-Length header: {raw!r}") from None
+        if n < 0:
+            raise ValueError("negative Content-Length")
+        return n
+
     def _read_json(self) -> dict:
-        n = int(self.headers.get("Content-Length") or 0)
+        n = self._content_length()
         if n > 1_000_000:
             raise ValueError("request body too large")
         raw = self.rfile.read(n) if n else b"{}"
         obj = json.loads(raw or b"{}")
         if not isinstance(obj, dict):
-            raise ValueError("expected a JSON object")
+            raise TypeError("expected a JSON object")
         return obj
 
     # ---- routing
@@ -380,7 +402,7 @@ class Handler(BaseHTTPRequestHandler):
         if u.path == "/api/state":
             return self._json(200, self.app.state())
         if u.path.startswith("/files/"):
-            return self._serve_file(u.path[len("/files/"):])
+            return self._serve_file(unquote(u.path[len("/files/"):]))
         self._err(404, "not found")
 
     def do_PUT(self) -> None:
@@ -394,18 +416,24 @@ class Handler(BaseHTTPRequestHandler):
         name = _safe_name(parse_qs(u.query).get("name", ["upload"])[0])
         if not name.lower().endswith(ARCHIVE_EXTS):
             return self._err(400, "only .g64 and .g64x files are accepted")
-        n = int(self.headers.get("Content-Length") or 0)
+        try:
+            n = self._content_length()
+        except ValueError as e:
+            return self._err(400, str(e))
         dest = os.path.join(self.app.upload_dir, name)
-        stem, ext = os.path.splitext(dest); k = 1
+        stem, ext = os.path.splitext(dest)
+        k = 1
         while os.path.exists(dest):
-            dest = f"{stem}_{k}{ext}"; k += 1
+            dest = f"{stem}_{k}{ext}"
+            k += 1
         remaining = n
         with open(dest, "wb") as fh:
             while remaining > 0:
                 chunk = self.rfile.read(min(1 << 20, remaining))
                 if not chunk:
                     break
-                fh.write(chunk); remaining -= len(chunk)
+                fh.write(chunk)
+                remaining -= len(chunk)
         if remaining:
             os.remove(dest)
             return self._err(400, "upload truncated")
@@ -419,7 +447,7 @@ class Handler(BaseHTTPRequestHandler):
         u = urlsplit(self.path)
         try:
             body = self._read_json()
-        except (ValueError, json.JSONDecodeError) as e:
+        except (ValueError, TypeError, json.JSONDecodeError) as e:
             return self._err(400, f"bad JSON: {e}")
         try:
             if u.path == "/api/convert":
@@ -434,7 +462,8 @@ class Handler(BaseHTTPRequestHandler):
                 job = self.app.runner.submit("convert", paths, {"formats": formats, "dewarp": dw, "mount": mount})
             elif u.path == "/api/dewarp":
                 paths = self._existing(body.get("paths"), (".mp4",))
-                mode = body.get("mode", "double"); mount = body.get("mount", "auto")
+                mode = body.get("mode", "double")
+                mount = body.get("mount", "auto")
                 if mode not in ("double", "panorama") or mount not in ("auto", "ceiling", "wall"):
                     raise ValueError("bad mode/mount")
                 job = self.app.runner.submit("dewarp", paths, {"mode": mode, "mount": mount})
@@ -446,7 +475,7 @@ class Handler(BaseHTTPRequestHandler):
                 job = self.app.runner.submit("transcode", paths, {"formats": fmts})
             else:
                 return self._err(404, "not found")
-        except ValueError as e:
+        except (ValueError, TypeError) as e:
             return self._err(400, str(e))
         self._json(200, {"job": job.to_dict()})
 
@@ -454,10 +483,10 @@ class Handler(BaseHTTPRequestHandler):
         if not isinstance(paths, list) or not paths:
             raise ValueError("paths must be a non-empty list")
         out = []
-        for p in paths:
-            if not isinstance(p, str):
-                raise ValueError("paths must be strings")
-            p = os.path.expanduser(p)
+        for raw in paths:
+            if not isinstance(raw, str):
+                raise TypeError("paths must be strings")
+            p = os.path.expanduser(raw)
             if not os.path.isfile(p):
                 raise ValueError(f"not a file: {p}")
             if not p.lower().endswith(exts):
@@ -494,7 +523,8 @@ class Handler(BaseHTTPRequestHandler):
             if m:
                 a, b = m.group(1), m.group(2)
                 if a:
-                    start = int(a); end = int(b) if b else size - 1
+                    start = int(a)
+                    end = int(b) if b else size - 1
                 elif b:
                     start = max(size - int(b), 0)
                 if start >= size or end < start:
@@ -791,8 +821,8 @@ button[disabled] { opacity: 0.45; cursor: not-allowed; transform: none; }
       const acts = d.querySelector(".acts");
       const mk = (label, fn, primary) => { const b = document.createElement("button"); b.textContent = label; if (primary) b.className = "primary"; b.onclick = fn; acts.appendChild(b); };
       if (o.playable) mk("Play", () => play(o), true);
-      const a = document.createElement("a"); a.href = o.url; a.textContent = o.kind === "dir" ? "List" : "Download"; a.setAttribute("download", o.kind === "dir" ? null : o.name);
-      if (o.kind === "dir") a.removeAttribute("download");
+      const a = document.createElement("a"); a.href = o.url; a.textContent = o.kind === "dir" ? "List" : "Download";
+      if (o.kind !== "dir") a.setAttribute("download", o.name.split("/").pop());
       a.style.cssText = "align-self:center;padding:0 8px"; acts.appendChild(a);
       if (/\.mp4$/i.test(o.name)) {
         const sel = document.createElement("select"); sel.setAttribute("aria-label", "produce format");

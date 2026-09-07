@@ -28,15 +28,15 @@ def transcode(mp4_path: str, fmt: str, out_dir: str | None = None, *, fps: float
     base = [ffmpeg, "-v", "error", "-y", "-i", mp4_path]
     if fmt in ("mkv", "mov"):
         out = os.path.join(out_dir, f"{stem}.{fmt}")
-        cmd = base + ["-c", "copy", out]          # lossless container change
+        cmd = [*base, "-c", "copy", out]          # lossless container change
     elif fmt == "webm":
         out = os.path.join(out_dir, f"{stem}.webm")
         cmd = base + (["-vf", ",".join(vf)] if vf else []) + [
             "-c:v", "libvpx-vp9", "-crf", "32", "-b:v", "0", "-row-mt", "1", "-an", out]
     elif fmt == "gif":
         out = os.path.join(out_dir, f"{stem}.gif")
-        f = ",".join(vf + ["split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer"])
-        cmd = base + ["-filter_complex", f, "-loop", "0", out]
+        f = ",".join([*vf, "split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer"])
+        cmd = [*base, "-filter_complex", f, "-loop", "0", out]
     elif fmt == "frames":
         out = os.path.join(out_dir, f"{stem}_frames")
         os.makedirs(out, exist_ok=True)
@@ -45,7 +45,7 @@ def transcode(mp4_path: str, fmt: str, out_dir: str | None = None, *, fps: float
     else:  # hls
         out = os.path.join(out_dir, f"{stem}_hls")
         os.makedirs(out, exist_ok=True)
-        cmd = base + ["-c", "copy", "-f", "hls", "-hls_time", "6", "-hls_list_size", "0",
+        cmd = [*base, "-c", "copy", "-f", "hls", "-hls_time", "6", "-hls_list_size", "0",
                       "-hls_segment_filename", os.path.join(out, "seg_%05d.ts"),
                       os.path.join(out, "index.m3u8")]
     p = run_ffmpeg_progress(cmd, media_duration(mp4_path) if progress else None, progress)

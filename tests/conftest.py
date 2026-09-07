@@ -1,4 +1,3 @@
-import os
 import shutil
 import subprocess
 
@@ -47,8 +46,8 @@ def wall_fisheye_video(tmp_path_factory, ffmpeg):
     _room_pano(ffmpeg, pano)
     video = d / "wallfisheye.mp4"
     subprocess.run([ffmpeg, "-v", "error", "-y", "-loop", "1", "-i", str(pano), "-t", "1", "-r", "5",
-                    "-vf", "v360=equirect:fisheye:ih_fov=360:iv_fov=180:h_fov=180:v_fov=180:pitch=0:w=360:h=360,"
-                           "drawbox=x=0:y=0:w=360:h=180:c=black:t=fill",
+                    "-vf", ("v360=equirect:fisheye:ih_fov=360:iv_fov=180:h_fov=180:v_fov=180:pitch=0:w=360:h=360,"
+                            "drawbox=x=0:y=0:w=360:h=180:c=black:t=fill"),
                     "-c:v", "libx264", "-pix_fmt", "yuv420p", str(video)], check=True)
     return str(video)
 
@@ -86,4 +85,4 @@ def probe_int(video, key):
 
 def framemd5(ffmpeg, video):
     p = subprocess.run([ffmpeg, "-v", "error", "-i", video, "-f", "framemd5", "-"], capture_output=True, text=True, check=True)
-    return [l.split(",")[-1].strip() for l in p.stdout.splitlines() if l and not l.startswith("#")]
+    return [ln.split(",")[-1].strip() for ln in p.stdout.splitlines() if ln and not ln.startswith("#")]

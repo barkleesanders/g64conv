@@ -3,20 +3,19 @@ decoded frames are identical to the intermediate H.264 (bit-exact copy)."""
 import json
 import os
 import subprocess
-import sys
+from pathlib import Path
 
+from conftest import framemd5
 from g64conv import format as g64
 from g64conv.archive import discover
 from g64conv.cli import main
 from g64conv.convert import convert_source, verify
 from g64conv.writer import write_g64, write_g64x
 
-from conftest import framemd5, probe_int
-
 
 def test_g64_header_roundtrip(tmp_path, sample_video):
     paths = write_g64(sample_video, str(tmp_path / "s.g64"), collection="unit test")
-    seg = g64.Segment.parse("s.g64", open(paths[0], "rb").read())
+    seg = g64.Segment.parse("s.g64", Path(paths[0]).read_bytes())
     assert seg.header.startcode == "Genetec Omnicast Archive v5.31"
     assert seg.header.collection_name == "unit test"
     assert not seg.header.watermarked and not seg.header.frames_encrypted
@@ -41,7 +40,7 @@ def test_convert_is_bit_exact(tmp_path, sample_video, ffmpeg):
     # our MP4 must give the same pixels as decoding that intermediate stream
     p = subprocess.run([ffmpeg, "-v", "error", "-i", sample_video, "-an", "-c:v", "libx264", "-preset", "veryfast",
                         "-crf", "23", "-g", "12", "-bf", "0", "-x264-params", "repeat-headers=1", "-f", "h264",
-                        str(tmp_path / "ref.h264")], capture_output=True)
+                        str(tmp_path / "ref.h264")], capture_output=True, check=False)
     assert p.returncode == 0
     assert framemd5(ffmpeg, r.output) == framemd5(ffmpeg, str(tmp_path / "ref.h264"))
     # frame times survive: 20 frames at 100 ms => 1.9 s between first and last
@@ -52,7 +51,7 @@ def test_damaged_fragment_is_reported_not_hidden(tmp_path, sample_video):
     """Drop one RTP sub-packet from a keyframe (what a recorder does under packet
     loss) and require the converter to keep the frame count and flag the frame."""
     paths = write_g64(sample_video, str(tmp_path / "d.g64"))
-    data = bytearray(open(paths[0], "rb").read())
+    data = bytearray(Path(paths[0]).read_bytes())
     seg = g64.Segment.parse("d.g64", bytes(data))
     fr = next(f for f in seg.frames if f.keyframe_flag)
     subs = list(g64.split_rtp(bytes(data), fr.payload_offset, fr.payload_size))
@@ -65,7 +64,7 @@ def test_damaged_fragment_is_reported_not_hidden(tmp_path, sample_video):
             data[o + 2:o + 4] = b"\0\0"
             break
         o += 6 + len(rtp)
-    open(tmp_path / "d2.g64", "wb").write(bytes(data))
+    (tmp_path / "d2.g64").write_bytes(bytes(data))
     r = convert_source(discover(str(tmp_path / "d2.g64"))[0], str(tmp_path / "out"))
     assert r.frames_written == 20
     assert r.frames_damaged == 1
@@ -76,7 +75,7 @@ def test_cli_json_and_exit_codes(tmp_path, sample_video):
     arc = write_g64x(sample_video, str(tmp_path / "c.g64x"))
     rc = main(["convert", arc, "-o", str(tmp_path / "out"), "--quiet", "--report", str(tmp_path / "r.json")])
     assert rc == 0
-    rep = json.load(open(tmp_path / "r.json"))
+    rep = json.loads((tmp_path / "r.json").read_text())
     assert rep[0]["status"] == "OK" and rep[0]["frames_written"] == 20
     assert main(["convert", str(tmp_path / "nope.g64x"), "--quiet"]) == 2
     assert main(["convert", arc, "-o", str(tmp_path / "dry"), "--dry-run", "--quiet"]) == 0
