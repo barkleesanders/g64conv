@@ -274,10 +274,13 @@ class App:
         self.started = time.time()
 
     def state(self) -> dict:
+        # One snapshot for both the list and the busy flag: two snapshots let a job finish
+        # in between, so a client saw busy=false next to a job still marked running (CI, 2026-09).
+        jobs = self.runner.snapshot()
         return {"version": __version__, "out_dir": self.out_dir, "upload_dir": self.upload_dir,
                 "tools": {"ffmpeg": bool(shutil.which("ffmpeg")), "ffprobe": bool(shutil.which("ffprobe"))},
-                "jobs": self.runner.snapshot(), "outputs": self.outputs.list(),
-                "busy": any(j["status"] in ("queued", "running") for j in self.runner.snapshot())}
+                "jobs": jobs, "outputs": self.outputs.list(),
+                "busy": any(j["status"] in ("queued", "running") for j in jobs)}
 
 
 class Handler(BaseHTTPRequestHandler):
