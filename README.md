@@ -17,6 +17,10 @@ could be found, with sources: g64conv is the only free converter that runs on
 macOS and Linux, needs no vendor software, and does not depend on how the
 export was made.
 
+## Press
+
+- ["You won the records request. Now the video won't open."](https://nyopengov.org/blog/genetec-video-foil-free-fix/) — NY Open Gov, September 2026. On how proprietary `.g64`/`.g64x` exports leave FOIL requesters holding a file they can't open, and why g64conv closes that gap.
+
 ## Install
 
 One line, from GitHub (there is no PyPI release yet):
