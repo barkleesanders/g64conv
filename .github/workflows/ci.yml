@@ -16,9 +16,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
-      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg shellcheck
       - run: ffmpeg -version | head -1
       - run: pip install -e .[test] ruff
       - run: ruff check src tests
+      - run: shellcheck install.sh
       - run: g64conv --version
       - run: pytest -q
