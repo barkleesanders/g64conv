@@ -596,6 +596,7 @@ PAGE = r"""<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>g64conv</title>
+<link rel="icon" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCI+PHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiByeD0iOCIgZmlsbD0iI2E1MzgxNiIvPjxwYXRoIGQ9Ik0yNCAxNnYzMmwyNi0xNnoiIGZpbGw9IiNmZmYiLz48L3N2Zz4=">
 <style>
 /* Hallmark · macrostructure: Workbench · tone: brutalist instrument · anchor hue: vermillion 35
  * theme: custom (vibe: "evidence bench, lab notebook, hard edges" · paper oklch(96% 0.006 80) ·
