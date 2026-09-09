@@ -23,7 +23,88 @@ export was made.
 
 ## Install
 
-One line, from GitHub (there is no PyPI release yet):
+### macOS and Linux (no Python required)
+
+Install FFmpeg once, then run the installer. It selects your processor,
+checks the download's SHA-256, and installs into your own account without sudo.
+Python and PyAV are included in the download; FFmpeg and ffprobe are separate.
+
+**macOS:** install [Homebrew](https://brew.sh/) if needed, then:
+
+```sh
+brew install ffmpeg
+```
+
+**Ubuntu / Debian:**
+
+```sh
+sudo apt update && sudo apt install -y ffmpeg curl
+```
+
+On other Linux distributions, install FFmpeg (including `ffprobe`) and curl
+with your package manager. Then, on either macOS or Linux:
+
+```sh
+curl -fsSL https://github.com/barkleesanders/g64conv/releases/latest/download/install.sh -o /tmp/g64conv-install.sh
+sh /tmp/g64conv-install.sh
+export PATH="$HOME/.local/bin:$PATH"
+g64conv gui
+```
+
+You can [read the installer](install.sh) before running it. Add the `export PATH`
+line to `~/.zshrc` (macOS) or `~/.bashrc` (Bash on Linux) to keep the command
+available in new terminals. The GUI opens in your browser and runs locally.
+For the command line, use `g64conv convert export.g64x`.
+
+### Direct downloads
+
+Prefer extracting an archive yourself? Download the build for your computer:
+
+| Computer | Download |
+|---|---|
+| Mac with Apple Silicon (M1/M2/M3/M4 or newer) | [macOS ARM64](https://github.com/barkleesanders/g64conv/releases/latest/download/g64conv-macos-arm64.tar.gz) |
+| Mac with Intel processor | [macOS x86_64](https://github.com/barkleesanders/g64conv/releases/latest/download/g64conv-macos-x86_64.tar.gz) |
+| Linux on Intel / AMD 64-bit | [Linux x86_64](https://github.com/barkleesanders/g64conv/releases/latest/download/g64conv-linux-x86_64.tar.gz) |
+| Linux on ARM64 / aarch64 | [Linux ARM64](https://github.com/barkleesanders/g64conv/releases/latest/download/g64conv-linux-arm64.tar.gz) |
+
+[All releases](https://github.com/barkleesanders/g64conv/releases) ·
+[SHA-256 checksums](https://github.com/barkleesanders/g64conv/releases/latest/download/SHA256SUMS) ·
+[Installer download](https://github.com/barkleesanders/g64conv/releases/latest/download/install.sh)
+
+Extract the archive, keep the entire `g64conv` directory together, and run
+`./g64conv/g64conv gui` from the directory where you extracted it. These are
+terminal executables, not a Finder `.app` or a Windows `.exe`.
+FFmpeg and ffprobe must be on your PATH for conversion.
+
+The native release tests run on macOS 14 (Apple Silicon), macOS 15 (Intel),
+Ubuntu 22.04 (x86_64), and Ubuntu 24.04 (ARM64). Older macOS versions and
+Linux distributions with older glibc are not covered by these builds; Alpine
+(musl) should use the Python installation below. The Mac builds are not
+Apple-notarized. If macOS blocks a downloaded executable, use the system's
+Privacy & Security approval after checking the release and checksum.
+
+### Update or remove
+
+**Update:** repeat the installer commands above. The installer downloads the
+latest release and switches the command only after its version check succeeds.
+Close and reopen an already-running GUI to use the new version. Previous
+versions are kept in `~/.local/lib/g64conv` so an active conversion is not
+interrupted. To install a specific release:
+
+```sh
+G64CONV_VERSION=v0.2.0 sh /tmp/g64conv-install.sh
+```
+
+To remove an installer-managed copy, stop the GUI, delete the symlink
+`~/.local/bin/g64conv`, and move `~/.local/lib/g64conv` to the Trash.
+Your archives and converted videos are stored separately and remain yours.
+`G64CONV_PREFIX=/absolute/path sh /tmp/g64conv-install.sh` installs under a
+different prefix; use that same prefix for updates and removal.
+
+### Python / pipx (also available on Windows)
+
+If you prefer a Python installation, use Python 3.10+ and pipx
+(there is no PyPI release yet):
 
 ```
 pipx install "git+https://github.com/barkleesanders/g64conv"
@@ -33,6 +114,10 @@ pipx install "git+https://github.com/barkleesanders/g64conv"
 way inside any Python 3.10+ environment. PyAV comes with it; `ffmpeg` and
 `ffprobe` must be on the PATH (`brew install ffmpeg`, `apt install ffmpeg`,
 `winget install ffmpeg`, or a static build from ffmpeg.org).
+
+Update a pipx installation with `pipx upgrade g64conv`. Do not mix pipx and
+the native installer at the same command path; the installer refuses to
+overwrite a command managed by another tool.
 
 ```
 g64conv convert export.g64x    # one MP4 per camera, verified frame-for-frame

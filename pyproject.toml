@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "g64conv"
-version = "0.1.0"
+version = "0.2.0"
 description = "Native converter for Genetec .g64/.g64x CCTV video archives to MP4 and other formats (no Wine, no vendor player)"
 readme = "README.md"
 license = { text = "MIT" }
