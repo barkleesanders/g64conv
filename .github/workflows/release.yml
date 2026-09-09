@@ -51,6 +51,10 @@ jobs:
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
           python -c 'import importlib.metadata, os; assert os.environ["RELEASE_TAG"] == "v" + importlib.metadata.version("g64conv"), "Release tag and package version differ"'
+      - name: Test conversion and installation on the native system
+        run: |
+          python -m pip install pytest
+          python -m pytest -q
       - name: Build portable archive
         run: python packaging/build.py
       - name: Extract the artifact for an independent smoke test

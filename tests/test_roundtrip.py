@@ -5,11 +5,13 @@ import os
 import subprocess
 from pathlib import Path
 
+import pytest
+
 from conftest import framemd5
 from g64conv import format as g64
 from g64conv.archive import discover
 from g64conv.cli import main
-from g64conv.convert import convert_source, verify
+from g64conv.convert import apply_display_rotation, convert_source, verify
 from g64conv.writer import write_g64, write_g64x
 
 
@@ -91,3 +93,21 @@ def test_probe_reads_synthetic(tmp_path, sample_video, capsys):
     assert set(rep[0]["compression_types"]) == {"24"}          # GenericH264 sub-packets only
     assert "7" in rep[0]["nal_units"] and "8" in rep[0]["nal_units"]   # SPS/PPS in-band on IDR
     assert rep[0]["span_s"] == 1.9
+
+
+@pytest.mark.parametrize("degrees", [90, 270])
+def test_display_rotation_preserves_frames(tmp_path, sample_video, ffmpeg, degrees):
+    """Exercise actual FFmpeg, including older distribution versions in native CI."""
+    video = tmp_path / "rotated.mp4"
+    video.write_bytes(Path(sample_video).read_bytes())
+    apply_display_rotation(str(video), degrees)
+    probe = json.loads(subprocess.check_output([
+        "ffprobe", "-v", "error", "-show_entries", "stream_side_data=rotation", "-of", "json", str(video)
+    ], text=True))
+    assert probe["streams"][0]["side_data_list"][0]["rotation"] % 360 == degrees
+    # Disable playback rotation while comparing the stored pixels.
+    def stored_pixels(path):
+        return subprocess.check_output([
+            ffmpeg, "-v", "error", "-noautorotate", "-i", str(path), "-f", "rawvideo", "-pix_fmt", "yuv420p", "-"
+        ])
+    assert stored_pixels(video) == stored_pixels(sample_video)

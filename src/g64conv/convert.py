@@ -210,10 +210,15 @@ def convert_source(source: Source, out_dir: str, *, keep_h264: bool = False,
 
 def apply_display_rotation(path: str, degrees: int) -> None:
     """Carry the camera's display rotation into the MP4 as a display matrix
-    (stream copy, pixels untouched). ``-display_rotation`` is an INPUT option."""
+    (stream copy, pixels untouched). Older FFmpeg uses the rotate metadata tag."""
     tmp = path[:-4] + ".rot.mp4"
     p = run([require("ffmpeg"), "-v", "error", "-y", "-display_rotation", str(degrees), "-i", path,
              "-c", "copy", "-movflags", "+faststart", tmp])
+    if p.returncode != 0 and "Unrecognized option 'display_rotation'" in p.stderr:
+        # FFmpeg 4/5 (e.g. Ubuntu 22.04) converts this tag into a display matrix.
+        # New FFmpeg ignores the tag, so prefer its explicit input option above.
+        p = run([require("ffmpeg"), "-v", "error", "-y", "-i", path,
+                 "-c", "copy", "-metadata:s:v:0", f"rotate={degrees}", "-movflags", "+faststart", tmp])
     if p.returncode != 0 or not os.path.exists(tmp):
         raise g64.G64Error("could not set display rotation: " + p.stderr.strip())
     os.replace(tmp, path)
