@@ -102,7 +102,7 @@ def test_display_rotation_preserves_frames(tmp_path, sample_video, ffmpeg, degre
     video.write_bytes(Path(sample_video).read_bytes())
     apply_display_rotation(str(video), degrees)
     probe = json.loads(subprocess.check_output([
-        "ffprobe", "-v", "error", "-show_entries", "stream_side_data=rotation", "-of", "json", str(video)
+        "ffprobe", "-v", "error", "-show_entries", "side_data=rotation", "-of", "json", str(video)
     ], text=True))
     assert probe["streams"][0]["side_data_list"][0]["rotation"] % 360 == degrees
     # Disable playback rotation while comparing the stored pixels.

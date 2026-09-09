@@ -233,7 +233,7 @@ def verify(result: ConvertResult) -> bool:
     failure measured on a 25,938-frame file.)"""
     try:
         j = ffprobe_json(result.output, "stream=codec_name,width,height,nb_read_frames,nb_read_packets",
-                         "stream_side_data=rotation", "format=duration", count_frames=True)
+                         "side_data=rotation", "format=duration", count_frames=True)
     except RuntimeError as e:
         result.verify = {"error": str(e)}
         return False

@@ -285,7 +285,7 @@ class Outputs:
     @staticmethod
     def _probe(p: str) -> dict:
         try:
-            j = ffprobe_json(p, "stream=codec_name,width,height,nb_frames", "stream_side_data=rotation", "format=duration")
+            j = ffprobe_json(p, "stream=codec_name,width,height,nb_frames", "side_data=rotation", "format=duration")
             st = (j.get("streams") or [{}])[0]
             rot = None
             for sd in st.get("side_data_list", []) or []:
