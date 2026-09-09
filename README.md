@@ -45,8 +45,9 @@ On other Linux distributions, install FFmpeg (including `ffprobe`) and curl
 with your package manager. Then, on either macOS or Linux:
 
 ```sh
-curl -fsSL https://github.com/barkleesanders/g64conv/releases/latest/download/install.sh -o /tmp/g64conv-install.sh
-sh /tmp/g64conv-install.sh
+g64conv_setup=$(mktemp -d) &&
+curl -fsSL https://github.com/barkleesanders/g64conv/releases/latest/download/install.sh -o "$g64conv_setup/install.sh" &&
+sh "$g64conv_setup/install.sh"
 export PATH="$HOME/.local/bin:$PATH"
 g64conv gui
 ```
@@ -92,13 +93,13 @@ versions are kept in `~/.local/lib/g64conv` so an active conversion is not
 interrupted. To install a specific release:
 
 ```sh
-G64CONV_VERSION=v0.2.0 sh /tmp/g64conv-install.sh
+G64CONV_VERSION=v0.2.0 sh "$g64conv_setup/install.sh"
 ```
 
 To remove an installer-managed copy, stop the GUI, delete the symlink
 `~/.local/bin/g64conv`, and move `~/.local/lib/g64conv` to the Trash.
 Your archives and converted videos are stored separately and remain yours.
-`G64CONV_PREFIX=/absolute/path sh /tmp/g64conv-install.sh` installs under a
+`G64CONV_PREFIX=/absolute/path sh "$g64conv_setup/install.sh"` installs under a
 different prefix; use that same prefix for updates and removal.
 
 ### Python / pipx (also available on Windows)

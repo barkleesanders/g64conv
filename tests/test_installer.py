@@ -128,14 +128,18 @@ def test_failed_executable_keeps_previous_installation(installation):
     install, prefix, release, _, _, _ = installation
     assert install().returncode == 0
     previous = (prefix / "bin/g64conv").resolve()
-    previous.write_text("#!/bin/sh\nexit 126\n")
+    candidate = release / "bad-candidate"
+    candidate.mkdir()
+    (candidate / "g64conv").write_text("#!/bin/sh\nexit 126\n")
+    (candidate / "g64conv").chmod(0o755)
     asset = release / "g64conv-linux-x86_64.tar.gz"
     with tarfile.open(asset, "w:gz") as archive:
-        archive.add(previous.parent, arcname="g64conv")
+        archive.add(candidate, arcname="g64conv")
     digest = hashlib.sha256(asset.read_bytes()).hexdigest()
     (release / "SHA256SUMS").write_text(f"{digest}  {asset.name}\n")
     result = install()
     assert result.returncode != 0
     assert "previous installation preserved" in result.stderr
     assert (prefix / "bin/g64conv").resolve() == previous
+    assert subprocess.check_output([str(previous), "--version"], text=True).strip() == "g64conv 0.2.0"
     assert len(list((prefix / "lib/g64conv").iterdir())) == 1
