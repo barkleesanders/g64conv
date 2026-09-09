@@ -109,4 +109,8 @@ case ":$PATH:" in
   *) printf 'Add this directory to your shell PATH: %s\n' "$prefix/bin"
      printf "For this terminal: export PATH=\"%s/bin:\$PATH\"\n" "$prefix" ;;
 esac
+resolved=$(command -v g64conv || true)
+if [ -n "$resolved" ] && [ "$resolved" != "$binary" ]; then
+  printf 'Your PATH currently selects another copy: %s\nUse "%s" or put %s/bin first on PATH.\n' "$resolved" "$binary" "$prefix"
+fi
 printf '%s\n' 'To update, run this installer again. Older versions remain in the installation directory.'

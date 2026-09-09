@@ -232,8 +232,11 @@ def verify(result: ConvertResult) -> bool:
     coarse timebase and reports 1 ms timestamps as duplicate DTS - a false
     failure measured on a 25,938-frame file.)"""
     try:
+        # This unique list name works on FFmpeg 4.4 and newer. The ambiguous
+        # "side_data" also selects frame/packet sections; old ffprobe emits
+        # malformed JSON for H.264 SEI data when those sections are selected.
         j = ffprobe_json(result.output, "stream=codec_name,width,height,nb_read_frames,nb_read_packets",
-                         "side_data=rotation", "format=duration", count_frames=True)
+                         "stream_side_data_list", "format=duration", count_frames=True)
     except RuntimeError as e:
         result.verify = {"error": str(e)}
         return False
