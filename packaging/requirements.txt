@@ -1,0 +1,4 @@
+# Release build inputs; install the project itself with --no-deps afterwards.
+av==18.1.0
+pyinstaller==6.22.2
+pyinstaller-hooks-contrib==2026.7

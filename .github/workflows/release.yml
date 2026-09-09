@@ -1,0 +1,98 @@
+name: portable builds
+
+on:
+  pull_request:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.platform }}-${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-22.04
+            platform: linux
+            arch: x86_64
+          - runner: ubuntu-24.04-arm
+            platform: linux
+            arch: arm64
+          - runner: macos-15-intel
+            platform: macos
+            arch: x86_64
+          - runner: macos-14
+            platform: macos
+            arch: arm64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install external video tools (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Install external video tools (macOS)
+        if: runner.os == 'macOS'
+        run: brew list ffmpeg >/dev/null 2>&1 || brew install ffmpeg
+      - name: Install pinned packaging dependencies
+        run: |
+          python -m pip install --only-binary=:all: -r packaging/requirements.txt
+          python -m pip install --no-deps .
+      - name: Match release tag to package version
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          python -c 'import importlib.metadata, os; assert os.environ["RELEASE_TAG"] == "v" + importlib.metadata.version("g64conv"), "Release tag and package version differ"'
+      - name: Build portable archive
+        run: python packaging/build.py
+      - name: Extract the artifact for an independent smoke test
+        env:
+          ARTIFACT: g64conv-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz
+        run: |
+          mkdir -p "$RUNNER_TEMP/g64conv-unpacked"
+          tar -xzf "dist/$ARTIFACT" -C "$RUNNER_TEMP/g64conv-unpacked"
+      - name: Test the frozen CLI and GUI without Python on PATH
+        timeout-minutes: 3
+        run: python packaging/smoke.py "$RUNNER_TEMP/g64conv-unpacked/g64conv/g64conv"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: g64conv-${{ matrix.platform }}-${{ matrix.arch }}
+          path: dist/g64conv-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz
+          if-no-files-found: error
+          compression-level: 0
+
+  release:
+    name: Publish all verified platforms
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: g64conv-*
+          merge-multiple: true
+          path: release-assets
+      - name: Prepare complete release and checksums
+        run: |
+          for asset in g64conv-linux-x86_64.tar.gz g64conv-linux-arm64.tar.gz g64conv-macos-x86_64.tar.gz g64conv-macos-arm64.tar.gz; do
+            test -s "release-assets/$asset"
+          done
+          cp install.sh release-assets/install.sh
+          cd release-assets
+          sha256sum g64conv-*.tar.gz install.sh > SHA256SUMS
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: gh release create "$RELEASE_TAG" release-assets/* --verify-tag --title "g64conv $RELEASE_TAG" --generate-notes

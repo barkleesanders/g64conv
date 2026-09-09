@@ -1,0 +1,25 @@
+g64conv portable distribution
+
+g64conv is distributed under the MIT license (see LICENSE).
+
+This archive bundles the Python interpreter, the PyInstaller bootloader,
+PyAV, and the shared libraries distributed in the selected PyAV wheel.
+The ffmpeg and ffprobe command-line programs are NOT included; install
+those programs using your operating system's package manager.
+
+The bundled components retain their own licenses. See the licenses/
+directory and _internal/av-*.dist-info/ for the notices supplied with the
+original distributions. BUILD-INFO.json records the build versions.
+
+Upstream projects and source:
+  Python: https://www.python.org/downloads/source/
+  PyInstaller: https://github.com/pyinstaller/pyinstaller
+    GPL with a bootloader exception permitting distribution of applications.
+  PyAV: https://github.com/PyAV-Org/PyAV
+    BSD-3-Clause; its wheels include separately licensed codec libraries.
+  PyAV wheel library builds: https://github.com/PyAV-Org/pyav-ffmpeg
+  FFmpeg: https://ffmpeg.org/
+
+Shared libraries remain separate files in _internal/ so their applicable
+licenses and replacement rights are retained. This application's MIT license
+does not relicense the bundled third-party components.
