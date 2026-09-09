@@ -9,6 +9,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.skipif(os.name == "nt", reason="The shell installer targets macOS and Linux; Windows uses the portable ZIP")
+
 INSTALLER = Path(__file__).resolve().parents[1] / "install.sh"
 
 

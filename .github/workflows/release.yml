@@ -18,6 +18,9 @@ jobs:
     name: ${{ matrix.platform }}-${{ matrix.arch }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 25
+    defaults:
+      run:
+        shell: bash
     strategy:
       fail-fast: false
       matrix:
@@ -25,15 +28,23 @@ jobs:
           - runner: ubuntu-22.04
             platform: linux
             arch: x86_64
+            archive: tar.gz
           - runner: ubuntu-24.04-arm
             platform: linux
             arch: arm64
+            archive: tar.gz
           - runner: macos-15-intel
             platform: macos
             arch: x86_64
+            archive: tar.gz
           - runner: macos-14
             platform: macos
             arch: arm64
+            archive: tar.gz
+          - runner: windows-latest
+            platform: windows
+            arch: x86_64
+            archive: zip
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -45,6 +56,16 @@ jobs:
       - name: Install external video tools (macOS)
         if: runner.os == 'macOS'
         run: brew list ffmpeg >/dev/null 2>&1 || brew install ffmpeg
+      - name: Install external video tools (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install ffmpeg --yes --no-progress
+          if ($LASTEXITCODE -ne 0) { throw "FFmpeg installation failed" }
+          ffmpeg -version
+          if ($LASTEXITCODE -ne 0) { throw "FFmpeg cannot run" }
+          ffprobe -version
+          if ($LASTEXITCODE -ne 0) { throw "ffprobe cannot run" }
       - name: Install pinned packaging dependencies
         run: |
           python -m pip install --only-binary=:all: -r packaging/requirements.txt
@@ -63,17 +84,16 @@ jobs:
         run: python packaging/build.py
       - name: Extract the artifact for an independent smoke test
         env:
-          ARTIFACT: g64conv-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz
+          ARTIFACT: g64conv-${{ matrix.platform }}-${{ matrix.arch }}.${{ matrix.archive }}
         run: |
-          mkdir -p "$RUNNER_TEMP/g64conv-unpacked"
-          tar -xzf "dist/$ARTIFACT" -C "$RUNNER_TEMP/g64conv-unpacked"
+          python -c 'import os, pathlib, shutil; shutil.unpack_archive("dist/" + os.environ["ARTIFACT"], pathlib.Path(os.environ["RUNNER_TEMP"]) / "g64conv-unpacked")'
       - name: Test the frozen CLI and GUI without Python on PATH
         timeout-minutes: 3
-        run: python packaging/smoke.py "$RUNNER_TEMP/g64conv-unpacked/g64conv/g64conv"
+        run: python packaging/smoke.py "$RUNNER_TEMP/g64conv-unpacked/g64conv/g64conv${{ runner.os == 'Windows' && '.exe' || '' }}"
       - uses: actions/upload-artifact@v4
         with:
           name: g64conv-${{ matrix.platform }}-${{ matrix.arch }}
-          path: dist/g64conv-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz
+          path: dist/g64conv-${{ matrix.platform }}-${{ matrix.arch }}.${{ matrix.archive }}
           if-no-files-found: error
           compression-level: 0
 
@@ -113,12 +133,12 @@ jobs:
           path: release-assets
       - name: Prepare complete release and checksums
         run: |
-          for asset in g64conv-linux-x86_64.tar.gz g64conv-linux-arm64.tar.gz g64conv-macos-x86_64.tar.gz g64conv-macos-arm64.tar.gz g64conv-codec-sources.tar.gz; do
+          for asset in g64conv-linux-x86_64.tar.gz g64conv-linux-arm64.tar.gz g64conv-macos-x86_64.tar.gz g64conv-macos-arm64.tar.gz g64conv-windows-x86_64.zip g64conv-codec-sources.tar.gz; do
             test -s "release-assets/$asset"
           done
           cp install.sh release-assets/install.sh
           cd release-assets
-          sha256sum g64conv-*.tar.gz install.sh > SHA256SUMS
+          sha256sum g64conv-*.tar.gz g64conv-*.zip install.sh > SHA256SUMS
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}

@@ -17,13 +17,14 @@ import sys
 import sysconfig
 import tarfile
 import tempfile
+import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 def native_target() -> tuple[str, str]:
-    systems = {"Linux": "linux", "Darwin": "macos"}
+    systems = {"Linux": "linux", "Darwin": "macos", "Windows": "windows"}
     architectures = {"x86_64": "x86_64", "AMD64": "x86_64", "arm64": "arm64", "aarch64": "arm64"}
     try:
         return systems[platform.system()], architectures[platform.machine()]
@@ -65,7 +66,8 @@ def main() -> None:
     args = parser.parse_args()
     system, architecture = native_target()
     args.output_dir.mkdir(parents=True, exist_ok=True)
-    output = args.output_dir.resolve() / f"g64conv-{system}-{architecture}.tar.gz"
+    extension = "zip" if system == "windows" else "tar.gz"
+    output = args.output_dir.resolve() / f"g64conv-{system}-{architecture}.{extension}"
     with tempfile.TemporaryDirectory(prefix="g64conv-build-") as temporary:
         build = Path(temporary)
         subprocess.run(
@@ -88,9 +90,17 @@ def main() -> None:
             "architecture": architecture,
             "build_os": platform.platform(),
         }, indent=2) + "\n")
-        # Keep symlinks intact: PyInstaller uses them for native shared libraries.
-        with tarfile.open(output, "w:gz", dereference=False) as archive:
-            archive.add(bundle, arcname="g64conv")
+        if system == "windows":
+            # Windows bundles do not use the shared-library symlinks needed on POSIX.
+            # ZIP opens directly in Explorer, without installing an archive utility.
+            with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+                for path in sorted(bundle.rglob("*")):
+                    if path.is_file():
+                        archive.write(path, path.relative_to(bundle.parent))
+        else:
+            # Keep symlinks intact: PyInstaller uses them for native shared libraries.
+            with tarfile.open(output, "w:gz", dereference=False) as archive:
+                archive.add(bundle, arcname="g64conv")
     print(output)
 
 

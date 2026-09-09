@@ -33,6 +33,38 @@ def frame_hashes(ffmpeg: str, path: Path, directory: Path, environment: dict[str
     return [line.rsplit(",", 1)[1].strip() for line in output.splitlines() if line and not line.startswith("#")]
 
 
+def check_gui(arguments: list[str], directory: Path, environment: dict[str, str], *, expect_output: bool) -> None:
+    with (directory / "gui.log").open("w+") as log:
+        process = subprocess.Popen(arguments, cwd=directory, env=environment, stdout=log, stderr=subprocess.STDOUT)
+        try:
+            deadline = time.monotonic() + 20
+            while True:
+                log.seek(0)
+                text = log.read()
+                match = re.search(r"http://127\.0\.0\.1:\d+/", text)
+                if match:
+                    break
+                if process.poll() is not None or time.monotonic() >= deadline:
+                    raise AssertionError(f"Frozen GUI failed to start:\n{text}")
+                time.sleep(0.1)
+            base = match.group(0)
+            opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+            with opener.open(base, timeout=5) as response:
+                assert response.status == 200 and b"<title>g64conv</title>" in response.read()
+            with opener.open(base + "api/state", timeout=5) as response:
+                state = json.load(response)
+            assert state["tools"]["ffmpeg"] is True and state["tools"]["ffprobe"] is True, state
+            if expect_output:
+                assert any(item["name"].endswith(".mp4") for item in state["outputs"]), state
+        finally:
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=5)
+
+
 def add_rotation_fixture(source: Path) -> None:
     """Add a 90-degree decoder message to the synth writer's v5.31 fixture.
 
@@ -80,13 +112,22 @@ def main() -> None:
         directory = Path(temporary)
         tool_bin = directory / "tools"
         tool_bin.mkdir()
-        (tool_bin / "ffmpeg").symlink_to(ffmpeg)
-        (tool_bin / "ffprobe").symlink_to(ffprobe)
         environment = {key: value for key, value in os.environ.items()
                        if not key.startswith(("PYTHON", "VIRTUAL_ENV", "CONDA", "LD_LIBRARY_PATH", "DYLD_"))}
-        # No Python or developer package directories on PATH. The application
-        # must use its own interpreter and PyAV, while external tools stay reachable.
-        environment["PATH"] = str(tool_bin)
+        if os.name == "nt":
+            # Keep Windows tool shims beside their metadata and DLLs. Windows
+            # symlinks require privileges unavailable to normal desktop users.
+            directories = dict.fromkeys((str(Path(ffmpeg).parent), str(Path(ffprobe).parent),
+                                         str(Path(os.environ["SYSTEMROOT"]) / "System32")))
+            environment["PATH"] = os.pathsep.join(directories)
+            environment["USERPROFILE"] = str(directory)
+        else:
+            (tool_bin / "ffmpeg").symlink_to(ffmpeg)
+            (tool_bin / "ffprobe").symlink_to(ffprobe)
+            environment["PATH"] = str(tool_bin)
+        # The frozen application must use its own interpreter and PyAV.
+        for interpreter in ("python", "python3", "py"):
+            assert shutil.which(interpreter, path=environment["PATH"]) is None, environment["PATH"]
         version = run([executable, "--version"], directory, environment).strip()
         if not version.startswith("g64conv "):
             raise AssertionError(version)
@@ -114,35 +155,16 @@ def main() -> None:
         expected = frame_hashes(ffmpeg, reference, directory, environment)
         actual = frame_hashes(ffmpeg, Path(converted["output"]), directory, environment)
         assert len(expected) == 20 and actual == expected, (actual, expected)
-        with (directory / "gui.log").open("w+") as log:
-            process = subprocess.Popen([executable, "gui", "--no-browser", "--port", "0", "-o", str(directory / "out")],
-                                       cwd=directory, env=environment, stdout=log, stderr=subprocess.STDOUT)
-            try:
-                deadline = time.monotonic() + 20
-                while True:
-                    log.seek(0)
-                    text = log.read()
-                    match = re.search(r"http://127\.0\.0\.1:\d+/", text)
-                    if match:
-                        break
-                    if process.poll() is not None or time.monotonic() >= deadline:
-                        raise AssertionError(f"Frozen GUI failed to start:\n{text}")
-                    time.sleep(0.1)
-                base = match.group(0)
-                opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-                with opener.open(base, timeout=5) as response:
-                    assert response.status == 200 and b"<title>g64conv</title>" in response.read()
-                with opener.open(base + "api/state", timeout=5) as response:
-                    state = json.load(response)
-                assert state["tools"]["ffmpeg"] is True, state
-                assert any(item["name"].endswith(".mp4") for item in state["outputs"]), state
-            finally:
-                process.terminate()
-                try:
-                    process.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    process.kill()
-                    process.wait(timeout=5)
+        check_gui([executable, "gui", "--no-browser", "--port", "0", "-o", str(directory / "out")],
+                  directory, environment, expect_output=True)
+        if os.name == "nt":
+            # Match Explorer's no-argument launch, with output confined to this
+            # test's user profile. Copying output also verifies the default folder.
+            default_output = directory / "g64conv-output"
+            default_output.mkdir()
+            shutil.copy2(converted["output"], default_output / "converted.mp4")
+            check_gui([executable], directory, environment, expect_output=True)
+            print("PASS Windows no-argument launch: GUI serves the default user output directory")
         print(f"PASS {version}: frozen synth/convert, 20 identical decoded frames, 90-degree rotation, GUI page and output listing")
 
 

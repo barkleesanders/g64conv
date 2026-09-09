@@ -17,7 +17,7 @@ esac
 case "$(uname -s)" in
   Darwin) platform=macos ;;
   Linux) platform=linux ;;
-  *) die 'Supported systems: macOS and Linux. See README for Python installation.' ;;
+  *) die 'This installer supports macOS and Linux. See README for the Windows executable or Python installation.' ;;
 esac
 case "$(uname -m)" in
   arm64|aarch64) arch=arm64 ;;
