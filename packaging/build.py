@@ -54,6 +54,8 @@ def add_notices(bundle: Path) -> None:
     if not python_license.is_file():
         raise RuntimeError("Python LICENSE.txt missing; cannot package without its notice")
     shutil.copy2(python_license, notices / "PYTHON-LICENSE.txt")
+    shutil.copytree(ROOT / "packaging" / "licenses", notices / "codec-libraries")
+    shutil.copy2(ROOT / "packaging" / "sources.json", bundle / "SOURCES.json")
     shutil.copy2(ROOT / "packaging" / "THIRD-PARTY.txt", bundle / "THIRD-PARTY.txt")
 
 
