@@ -16,7 +16,7 @@ INSTALLER = Path(__file__).resolve().parents[1] / "install.sh"
 def installation(tmp_path):
     commands = tmp_path / "commands"
     commands.mkdir()
-    for name in ("sh", "tar", "mktemp", "awk", "mkdir", "rm", "ln", "mv", "readlink", "cp"):
+    for name in ("sh", "tar", "gzip", "mktemp", "awk", "mkdir", "rm", "ln", "mv", "readlink", "cp"):
         (commands / name).symlink_to(shutil.which(name))
     hasher = "sha256sum" if shutil.which("sha256sum") else "shasum"
     (commands / hasher).symlink_to(shutil.which(hasher))
