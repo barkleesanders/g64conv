@@ -240,8 +240,9 @@ class Outputs:
                 continue
             for name in names:
                 p = os.path.join(full_dir, name)
-                rel = os.path.join(rel_dir, name) if rel_dir else name
-                url = "/files/" + "/".join(quote(seg, safe="") for seg in rel.split(os.sep))
+                # API output names use URL-style separators on every platform.
+                rel = (os.path.join(rel_dir, name) if rel_dir else name).replace(os.sep, "/")
+                url = "/files/" + "/".join(quote(seg, safe="") for seg in rel.split("/"))
                 low = name.lower()
                 if os.path.isfile(p) and low.endswith(OUTPUT_FILE_EXTS):
                     st = os.stat(p)
